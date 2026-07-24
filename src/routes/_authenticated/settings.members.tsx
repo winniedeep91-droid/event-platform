@@ -149,7 +149,9 @@ function MembersPage() {
         confirmLabel="Remove"
         destructive
         loading={removeMutation.isPending}
-        onConfirm={() => pendingRemove && removeMutation.mutate(pendingRemove.id)}
+        onConfirm={() => {
+          if (pendingRemove) removeMutation.mutate(pendingRemove.id);
+        }}
       />
     </div>
   );

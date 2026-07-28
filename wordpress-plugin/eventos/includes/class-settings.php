@@ -144,6 +144,51 @@ final class Settings {
 	}
 
 	/**
+	 * Register additional settings groups contributed by a module.
+	 *
+	 * @param array<string, array<string, mixed>> $groups Group definitions.
+	 * @return void
+	 */
+	public static function register_groups( array $groups ): void {
+		if ( ! $groups ) {
+			return;
+		}
+
+		self::schema();
+
+		foreach ( $groups as $slug => $group ) {
+			$slug = sanitize_key( (string) $slug );
+
+			if ( '' === $slug || empty( $group['fields'] ) || ! is_array( $group['fields'] ) ) {
+				continue;
+			}
+
+			self::$schema[ $slug ] = array(
+				'label'       => (string) ( $group['label'] ?? $slug ),
+				'description' => (string) ( $group['description'] ?? '' ),
+				'fields'      => $group['fields'],
+			);
+
+			if ( false === get_option( self::option_name( $slug ), false ) ) {
+				add_option( self::option_name( $slug ), self::defaults( $slug ) );
+			}
+		}
+	}
+
+	/**
+	 * Build a single field definition for module authors.
+	 *
+	 * @param string $label   Field label.
+	 * @param string $type    Field type.
+	 * @param mixed  $default Default value.
+	 * @param array  $choices Allowed values for choice fields.
+	 * @return array<string, mixed>
+	 */
+	public static function define_field( string $label, string $type, $default, array $choices = array() ): array {
+		return self::field( $label, $type, $default, $choices );
+	}
+
+	/**
 	 * Option name for a group.
 	 *
 	 * @param string $group Group slug.

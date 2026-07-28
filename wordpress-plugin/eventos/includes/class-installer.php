@@ -120,16 +120,47 @@ final class Installer {
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
 			action VARCHAR(100) NOT NULL,
+			module VARCHAR(50) NOT NULL DEFAULT 'core',
+			severity VARCHAR(20) NOT NULL DEFAULT 'info',
 			object_type VARCHAR(50) NOT NULL DEFAULT '',
 			object_id VARCHAR(64) NOT NULL DEFAULT '',
+			before_value LONGTEXT NULL,
+			after_value LONGTEXT NULL,
 			context LONGTEXT NULL,
 			ip_address VARCHAR(45) NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
 			KEY user_id (user_id),
 			KEY action (action),
+			KEY module_severity (module, severity),
 			KEY object (object_type, object_id),
 			KEY created_at (created_at)
+		) {$charset_collate};";
+
+		$jobs = self::jobs_table();
+
+		$schema[] = "CREATE TABLE {$jobs} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			job_type VARCHAR(100) NOT NULL,
+			module VARCHAR(50) NOT NULL DEFAULT 'core',
+			job_group VARCHAR(100) NOT NULL DEFAULT '',
+			payload LONGTEXT NULL,
+			result LONGTEXT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			priority SMALLINT NOT NULL DEFAULT 10,
+			attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+			max_attempts SMALLINT UNSIGNED NOT NULL DEFAULT 3,
+			recurrence INT UNSIGNED NOT NULL DEFAULT 0,
+			last_error TEXT NULL,
+			scheduled_at DATETIME NOT NULL,
+			started_at DATETIME NULL,
+			completed_at DATETIME NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY status_scheduled (status, scheduled_at),
+			KEY job_type (job_type),
+			KEY module (module),
+			KEY job_group (job_group)
 		) {$charset_collate};";
 
 		foreach ( $schema as $table_sql ) {
@@ -153,6 +184,17 @@ final class Installer {
 	}
 
 	/**
+	 * Fully qualified jobs table name.
+	 *
+	 * @return string
+	 */
+	public static function jobs_table(): string {
+		global $wpdb;
+
+		return $wpdb->prefix . 'eventos_jobs';
+	}
+
+	/**
 	 * Fully qualified activity log table name.
 	 *
 	 * @return string
@@ -171,7 +213,7 @@ final class Installer {
 	public static function tables_installed(): bool {
 		global $wpdb;
 
-		foreach ( array( self::invitations_table(), self::activity_table() ) as $table ) {
+		foreach ( array( self::invitations_table(), self::activity_table(), self::jobs_table() ) as $table ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
 

@@ -16,10 +16,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Capability registry.
+ * Assignment layer between WordPress users and the EventOS permission engine.
  *
- * EventOS roles are stored as user meta so a single WordPress user can hold
- * several EventOS roles at once, while WordPress roles keep their own meaning.
+ * Capability and role *definitions* live in {@see Permissions}. This class owns
+ * the assignment of those roles to WordPress users and the bridge into
+ * `current_user_can()`. EventOS roles are stored as user meta so a single
+ * WordPress user can hold several EventOS roles at once.
  */
 final class Capabilities {
 
@@ -44,93 +46,41 @@ final class Capabilities {
 	public const MANAGE_TEAM = 'eventos_manage_team';
 
 	/**
-	 * Every capability EventOS defines, keyed by capability with a label.
+	 * Capability required to enable, disable and inspect modules.
+	 */
+	public const MANAGE_MODULES = 'eventos_manage_modules';
+
+	/**
+	 * Capability required to read the activity log and job history.
+	 */
+	public const VIEW_LOGS = 'eventos_view_logs';
+
+	/**
+	 * Capability required to run imports.
+	 */
+	public const RUN_IMPORTS = 'eventos_run_imports';
+
+	/**
+	 * Capability required to export data.
+	 */
+	public const RUN_EXPORTS = 'eventos_run_exports';
+
+	/**
+	 * Every capability EventOS knows about, keyed by capability with a label.
 	 *
 	 * @return array<string, string>
 	 */
 	public static function all_capabilities(): array {
-		return array(
-			self::VIEW_DASHBOARD     => __( 'View EventOS dashboard', 'eventos' ),
-			self::MANAGE_SETTINGS    => __( 'Manage EventOS settings', 'eventos' ),
-			self::MANAGE_TEAM        => __( 'Manage team and invitations', 'eventos' ),
-			'eventos_manage_events'  => __( 'Manage events', 'eventos' ),
-			'eventos_manage_tickets' => __( 'Manage ticketing', 'eventos' ),
-			'eventos_manage_orders'  => __( 'Manage orders', 'eventos' ),
-			'eventos_view_finance'   => __( 'View finance and reports', 'eventos' ),
-			'eventos_manage_finance' => __( 'Manage finance', 'eventos' ),
-			'eventos_manage_crm'     => __( 'Manage customers and CRM', 'eventos' ),
-			'eventos_manage_market'  => __( 'Manage marketing campaigns', 'eventos' ),
-			'eventos_scan_tickets'   => __( 'Scan tickets at the door', 'eventos' ),
-			'eventos_view_door'      => __( 'Access door management', 'eventos' ),
-		);
+		return Permissions::capabilities();
 	}
 
 	/**
 	 * EventOS role definitions.
 	 *
-	 * @return array<string, array{label: string, capabilities: string[]}>
+	 * @return array<string, array{label: string, description: string, capabilities: string[], core: bool}>
 	 */
 	public static function roles(): array {
-		$all = array_keys( self::all_capabilities() );
-
-		$roles = array(
-			'owner'         => array(
-				'label'        => __( 'Owner', 'eventos' ),
-				'capabilities' => $all,
-			),
-			'administrator' => array(
-				'label'        => __( 'Administrator', 'eventos' ),
-				'capabilities' => array_values( array_diff( $all, array( 'eventos_manage_finance' ) ) ),
-			),
-			'finance'       => array(
-				'label'        => __( 'Finance', 'eventos' ),
-				'capabilities' => array(
-					self::VIEW_DASHBOARD,
-					'eventos_view_finance',
-					'eventos_manage_finance',
-					'eventos_manage_orders',
-				),
-			),
-			'marketing'     => array(
-				'label'        => __( 'Marketing', 'eventos' ),
-				'capabilities' => array(
-					self::VIEW_DASHBOARD,
-					'eventos_manage_market',
-					'eventos_manage_crm',
-				),
-			),
-			'event_manager' => array(
-				'label'        => __( 'Event Manager', 'eventos' ),
-				'capabilities' => array(
-					self::VIEW_DASHBOARD,
-					'eventos_manage_events',
-					'eventos_manage_tickets',
-					'eventos_manage_orders',
-					'eventos_view_door',
-				),
-			),
-			'door_staff'    => array(
-				'label'        => __( 'Door Staff', 'eventos' ),
-				'capabilities' => array(
-					self::VIEW_DASHBOARD,
-					'eventos_view_door',
-					'eventos_scan_tickets',
-				),
-			),
-			'scanner'       => array(
-				'label'        => __( 'Scanner', 'eventos' ),
-				'capabilities' => array(
-					'eventos_scan_tickets',
-				),
-			),
-		);
-
-		/**
-		 * Filter the EventOS role definitions.
-		 *
-		 * @param array<string, array{label: string, capabilities: string[]}> $roles Role map.
-		 */
-		return (array) apply_filters( 'eventos_roles', $roles );
+		return Permissions::roles();
 	}
 
 	/**
@@ -174,17 +124,19 @@ final class Capabilities {
 	 * @return string[] Roles that were stored.
 	 */
 	public static function set_user_roles( int $user_id, array $roles ): array {
-		$valid = array_values( array_unique( array_intersect( $roles, array_keys( self::roles() ) ) ) );
+		$previous = self::get_user_roles( $user_id );
+		$valid    = array_values( array_unique( array_intersect( $roles, array_keys( self::roles() ) ) ) );
 
 		update_user_meta( $user_id, self::USER_META_KEY, $valid );
 
 		/**
 		 * Fires after a user's EventOS roles changed.
 		 *
-		 * @param int      $user_id User ID.
-		 * @param string[] $valid   Assigned role slugs.
+		 * @param int      $user_id  User ID.
+		 * @param string[] $valid    Assigned role slugs.
+		 * @param string[] $previous Previously assigned role slugs.
 		 */
-		do_action( 'eventos_user_roles_updated', $user_id, $valid );
+		do_action( 'eventos_user_roles_updated', $user_id, $valid, $previous );
 
 		return $valid;
 	}
@@ -196,14 +148,7 @@ final class Capabilities {
 	 * @return string[]
 	 */
 	public static function get_user_capabilities( int $user_id ): array {
-		$roles        = self::roles();
-		$capabilities = array();
-
-		foreach ( self::get_user_roles( $user_id ) as $slug ) {
-			$capabilities = array_merge( $capabilities, $roles[ $slug ]['capabilities'] );
-		}
-
-		return array_values( array_unique( $capabilities ) );
+		return Permissions::capabilities_for_roles( self::get_user_roles( $user_id ) );
 	}
 
 	/**
@@ -235,6 +180,8 @@ final class Capabilities {
 	 * @return void
 	 */
 	public static function init(): void {
+		Permissions::bootstrap();
+
 		add_filter( 'user_has_cap', array( __CLASS__, 'filter_user_has_cap' ), 10, 4 );
 	}
 }

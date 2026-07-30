@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AdminApp } from "./AdminApp";
 import { ToastProvider } from "./ui";
+import "./ui/ui.css";
 import "./admin.css";
 
 const container = document.getElementById("eventos-admin-root");

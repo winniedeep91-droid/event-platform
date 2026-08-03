@@ -1,0 +1,325 @@
+<?php
+/**
+ * Database schema owned by the Events module.
+ *
+ * @package EventOS
+ */
+
+declare( strict_types = 1 );
+
+namespace EventOS\Events;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Creates and upgrades every table the Events module needs.
+ */
+final class Event_Schema {
+
+	/**
+	 * Schema version stored in the options table.
+	 */
+	public const VERSION = '1.0.0';
+
+	/**
+	 * Option holding the installed schema version.
+	 */
+	public const VERSION_OPTION = 'eventos_events_schema_version';
+
+	/**
+	 * Prefixed table name.
+	 *
+	 * @param string $name Table suffix.
+	 * @return string
+	 */
+	public static function table( string $name ): string {
+		global $wpdb;
+
+		return $wpdb->prefix . 'eventos_' . $name;
+	}
+
+	/**
+	 * Events table.
+	 *
+	 * @return string
+	 */
+	public static function events(): string {
+		return self::table( 'events' );
+	}
+
+	/**
+	 * Venues table.
+	 *
+	 * @return string
+	 */
+	public static function venues(): string {
+		return self::table( 'venues' );
+	}
+
+	/**
+	 * Artists table.
+	 *
+	 * @return string
+	 */
+	public static function artists(): string {
+		return self::table( 'artists' );
+	}
+
+	/**
+	 * Event/artist relation table.
+	 *
+	 * @return string
+	 */
+	public static function event_artists(): string {
+		return self::table( 'event_artists' );
+	}
+
+	/**
+	 * Categories table.
+	 *
+	 * @return string
+	 */
+	public static function categories(): string {
+		return self::table( 'event_categories' );
+	}
+
+	/**
+	 * Tags table.
+	 *
+	 * @return string
+	 */
+	public static function tags(): string {
+		return self::table( 'event_tags' );
+	}
+
+	/**
+	 * Event/term relation table.
+	 *
+	 * @return string
+	 */
+	public static function event_terms(): string {
+		return self::table( 'event_terms' );
+	}
+
+	/**
+	 * Event media table.
+	 *
+	 * @return string
+	 */
+	public static function media(): string {
+		return self::table( 'event_media' );
+	}
+
+	/**
+	 * Event schedules table.
+	 *
+	 * @return string
+	 */
+	public static function schedules(): string {
+		return self::table( 'event_schedules' );
+	}
+
+	/**
+	 * Create or upgrade every Events table.
+	 *
+	 * @return void
+	 */
+	public static function install(): void {
+		global $wpdb;
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$collate = $wpdb->get_charset_collate();
+		$schema  = array();
+
+		$events = self::events();
+		$venues = self::venues();
+
+		$schema[] = "CREATE TABLE {$events} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			title VARCHAR(191) NOT NULL,
+			subtitle VARCHAR(191) NOT NULL DEFAULT '',
+			slug VARCHAR(191) NOT NULL,
+			description LONGTEXT NULL,
+			short_description TEXT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'draft',
+			visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+			password_hash VARCHAR(255) NOT NULL DEFAULT '',
+			ticket_visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+			venue_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+			starts_at DATETIME NULL,
+			ends_at DATETIME NULL,
+			doors_open_at DATETIME NULL,
+			capacity INT UNSIGNED NOT NULL DEFAULT 0,
+			age_restriction VARCHAR(50) NOT NULL DEFAULT '',
+			accessibility TEXT NULL,
+			featured_image_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			organisers TEXT NULL,
+			collaborators TEXT NULL,
+			recurrence TEXT NULL,
+			published_at DATETIME NULL,
+			created_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			updated_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug),
+			KEY status_starts (status, starts_at),
+			KEY venue_id (venue_id),
+			KEY starts_at (starts_at)
+		) {$collate};";
+
+		$schema[] = "CREATE TABLE {$venues} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			name VARCHAR(191) NOT NULL,
+			slug VARCHAR(191) NOT NULL,
+			address_line1 VARCHAR(191) NOT NULL DEFAULT '',
+			address_line2 VARCHAR(191) NOT NULL DEFAULT '',
+			city VARCHAR(120) NOT NULL DEFAULT '',
+			province VARCHAR(120) NOT NULL DEFAULT '',
+			postal_code VARCHAR(30) NOT NULL DEFAULT '',
+			country VARCHAR(2) NOT NULL DEFAULT '',
+			latitude DECIMAL(10,7) NULL,
+			longitude DECIMAL(10,7) NULL,
+			maps_url VARCHAR(255) NOT NULL DEFAULT '',
+			parking_info TEXT NULL,
+			capacity INT UNSIGNED NOT NULL DEFAULT 0,
+			seating_configuration TEXT NULL,
+			notes TEXT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug),
+			KEY city (city)
+		) {$collate};";
+
+		$artists = self::artists();
+
+		$schema[] = "CREATE TABLE {$artists} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			name VARCHAR(191) NOT NULL,
+			slug VARCHAR(191) NOT NULL,
+			biography LONGTEXT NULL,
+			genres TEXT NULL,
+			social_links TEXT NULL,
+			website VARCHAR(255) NOT NULL DEFAULT '',
+			country VARCHAR(2) NOT NULL DEFAULT '',
+			image_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug),
+			KEY name (name)
+		) {$collate};";
+
+		$event_artists = self::event_artists();
+
+		$schema[] = "CREATE TABLE {$event_artists} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			artist_id BIGINT UNSIGNED NOT NULL,
+			billing VARCHAR(50) NOT NULL DEFAULT 'support',
+			stage VARCHAR(120) NOT NULL DEFAULT '',
+			starts_at DATETIME NULL,
+			ends_at DATETIME NULL,
+			position INT NOT NULL DEFAULT 0,
+			notes TEXT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY event_artist (event_id, artist_id),
+			KEY artist_id (artist_id)
+		) {$collate};";
+
+		$categories = self::categories();
+
+		$schema[] = "CREATE TABLE {$categories} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			name VARCHAR(191) NOT NULL,
+			slug VARCHAR(191) NOT NULL,
+			description TEXT NULL,
+			parent_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug),
+			KEY parent_id (parent_id)
+		) {$collate};";
+
+		$tags = self::tags();
+
+		$schema[] = "CREATE TABLE {$tags} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			name VARCHAR(191) NOT NULL,
+			slug VARCHAR(191) NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug)
+		) {$collate};";
+
+		$event_terms = self::event_terms();
+
+		$schema[] = "CREATE TABLE {$event_terms} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			term_id BIGINT UNSIGNED NOT NULL,
+			taxonomy VARCHAR(20) NOT NULL DEFAULT 'category',
+			PRIMARY KEY  (id),
+			UNIQUE KEY event_term (event_id, term_id, taxonomy),
+			KEY taxonomy_term (taxonomy, term_id)
+		) {$collate};";
+
+		$media = self::media();
+
+		$schema[] = "CREATE TABLE {$media} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			attachment_id BIGINT UNSIGNED NOT NULL,
+			type VARCHAR(20) NOT NULL DEFAULT 'gallery',
+			title VARCHAR(191) NOT NULL DEFAULT '',
+			position INT NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY event_attachment (event_id, attachment_id, type),
+			KEY event_id (event_id)
+		) {$collate};";
+
+		$schedules = self::schedules();
+
+		$schema[] = "CREATE TABLE {$schedules} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			label VARCHAR(191) NOT NULL DEFAULT '',
+			type VARCHAR(20) NOT NULL DEFAULT 'performance',
+			stage VARCHAR(120) NOT NULL DEFAULT '',
+			artist_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			starts_at DATETIME NULL,
+			ends_at DATETIME NULL,
+			position INT NOT NULL DEFAULT 0,
+			notes TEXT NULL,
+			PRIMARY KEY  (id),
+			KEY event_id (event_id),
+			KEY artist_id (artist_id),
+			KEY starts_at (starts_at)
+		) {$collate};";
+
+		foreach ( $schema as $statement ) {
+			dbDelta( $statement );
+		}
+
+		update_option( self::VERSION_OPTION, self::VERSION );
+	}
+
+	/**
+	 * Install the schema when it is missing or outdated.
+	 *
+	 * @return void
+	 */
+	public static function maybe_install(): void {
+		if ( (string) get_option( self::VERSION_OPTION, '' ) === self::VERSION ) {
+			return;
+		}
+
+		self::install();
+	}
+}

@@ -215,7 +215,7 @@ final class Events_Module extends Abstract_Module {
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
 		add_action( 'eventos_register_search_entities', array( $this, 'register_search_entities' ) );
 		add_action( 'eventos_register_exports', array( $this, 'register_exports' ) );
-		add_action( 'eventos_register_import_targets', array( $this, 'register_import_targets' ) );
+		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 
 		Import_Registry::bootstrap();

@@ -259,7 +259,7 @@ async function unwrapCollection<T>(path: string): Promise<Collection<T>> {
   };
 }
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(params: Readonly<Record<string, string | number | undefined>>): string {
   const search = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -449,6 +449,7 @@ export interface EventFormOptions {
 }
 
 export interface EventListParams {
+  [key: string]: string | number | undefined;
   search?: string;
   status?: string;
   visibility?: string;
@@ -465,6 +466,7 @@ export interface EventListParams {
 }
 
 export interface VenueListParams {
+  [key: string]: string | number | undefined;
   search?: string;
   city?: string;
   country?: string;
@@ -475,6 +477,7 @@ export interface VenueListParams {
 }
 
 export interface ArtistListParams {
+  [key: string]: string | number | undefined;
   search?: string;
   genre?: string;
   country?: string;

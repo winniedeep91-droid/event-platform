@@ -70,18 +70,18 @@ function OverviewTab({ event, statuses }: { event: EventRecord; statuses?: Recor
       <Card title="Event details">
         <DefinitionList
           items={[
-            { term: "Status", description: statusLabel(event.status, statuses) },
-            { term: "Visibility", description: statusLabel(event.visibility) },
-            { term: "Ticket visibility", description: statusLabel(event.ticket_visibility) },
-            { term: "Starts", description: formatDateTime(event.starts_at) },
-            { term: "Ends", description: formatDateTime(event.ends_at) },
-            { term: "Doors open", description: formatDateTime(event.doors_open_at) },
-            { term: "Venue", description: venueLabel(event) },
-            { term: "Timezone", description: event.timezone || "—" },
-            { term: "Age restriction", description: event.age_restriction || "—" },
-            { term: "Accessibility", description: event.accessibility || "—" },
-            { term: "Slug", description: event.slug },
-            { term: "Last updated", description: formatDateTime(event.updated_at) },
+            { term: "Status", value: statusLabel(event.status, statuses) },
+            { term: "Visibility", value: statusLabel(event.visibility) },
+            { term: "Ticket visibility", value: statusLabel(event.ticket_visibility) },
+            { term: "Starts", value: formatDateTime(event.starts_at) },
+            { term: "Ends", value: formatDateTime(event.ends_at) },
+            { term: "Doors open", value: formatDateTime(event.doors_open_at) },
+            { term: "Venue", value: venueLabel(event) },
+            { term: "Timezone", value: event.timezone || "—" },
+            { term: "Age restriction", value: event.age_restriction || "—" },
+            { term: "Accessibility", value: event.accessibility || "—" },
+            { term: "Slug", value: event.slug },
+            { term: "Last updated", value: formatDateTime(event.updated_at) },
           ]}
         />
       </Card>

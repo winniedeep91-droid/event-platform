@@ -928,3 +928,207 @@ export const eventsApi = {
   exportReport: (eventId: number, format: "csv" | "pdf") =>
     `${config().restUrl}eventos/v1/events/${eventId}/reports/export?format=${format}&_wpnonce=${config().nonce}`,
 };
+
+/* ------------------------------------------------------------------------ */
+/* Platform infrastructure                                                   */
+/* ------------------------------------------------------------------------ */
+
+export interface ActivityEntryRecord {
+  id: number;
+  action: string;
+  module: string;
+  severity: string;
+  object_type: string;
+  object_id: string;
+  entity: { type: string; id: string };
+  before: unknown;
+  after: unknown;
+  context: Record<string, unknown>;
+  created_at: string;
+  user: { id: number; name: string };
+}
+
+export interface ActivityListParams {
+  search?: string;
+  module?: string;
+  action?: string;
+  severity?: string;
+  entity_type?: string;
+  entity_id?: string;
+  user_id?: number;
+  since?: string;
+  until?: string;
+  order?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface ActivityFilters {
+  modules: string[];
+  severities: string[];
+  total: number;
+}
+
+export interface NotificationRecord {
+  key: string;
+  type: string;
+  title: string;
+  message: string;
+  module: string;
+  dismissible: boolean;
+  persistent: boolean;
+  actions: Array<{ label: string; url: string }>;
+  created_at: string;
+}
+
+export interface NotificationListParams {
+  search?: string;
+  type?: string;
+  module?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface SyncTarget {
+  slug: string;
+  label: string;
+  description: string;
+  module: string;
+  enabled: boolean;
+  interval: number;
+  last_run_at: string;
+  last_status: string;
+  last_message: string;
+  last_duration: number;
+  running: boolean;
+}
+
+export interface SyncRun {
+  id: string;
+  target: string;
+  label: string;
+  status: string;
+  trigger: string;
+  message: string;
+  processed: number;
+  failed: number;
+  duration: number;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface SyncHistoryParams {
+  search?: string;
+  target?: string;
+  status?: string;
+  trigger?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface DiagnosticsCheck {
+  id: string;
+  label: string;
+  category: string;
+  status: "pass" | "warn" | "fail";
+  value: string;
+  description: string;
+  hint: string;
+}
+
+export interface DiagnosticsReport {
+  generated_at: string;
+  healthy: boolean;
+  summary: Record<"pass" | "warn" | "fail", number>;
+  categories: Array<{ slug: string; label: string }>;
+  checks: DiagnosticsCheck[];
+  system: DashboardPayload["system"];
+  jobs: Record<string, number>;
+  sync: Record<string, number>;
+}
+
+export interface JobRecord {
+  id: number;
+  type: string;
+  module: string;
+  group: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string;
+  scheduled_at: string;
+  started_at: string;
+  completed_at: string;
+  created_at: string;
+}
+
+export interface JobListParams {
+  search?: string;
+  status?: string;
+  job_type?: string;
+  module?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export const platformApi = {
+  activity: (params: ActivityListParams) =>
+    unwrapCollection<ActivityEntryRecord>(`platform/activity${query({ ...params })}`),
+  audit: (params: ActivityListParams) =>
+    unwrapCollection<ActivityEntryRecord>(`platform/audit${query({ ...params })}`),
+  activityFilters: () => unwrap<ActivityFilters>("platform/activity/filters"),
+  purgeActivity: (days: number) =>
+    unwrap<{ deleted: number }>("platform/activity/purge", {
+      method: "POST",
+      body: JSON.stringify({ days }),
+    }),
+
+  notifications: (params: NotificationListParams) =>
+    unwrapCollection<NotificationRecord>(`platform/notifications${query({ ...params })}`),
+  dismissNotification: (key: string) =>
+    unwrap<{ dismissed: boolean }>("platform/notifications/dismiss", {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    }),
+  removeNotification: (key: string) =>
+    unwrap<{ removed: boolean }>("platform/notifications/remove", {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    }),
+  clearNotifications: () =>
+    unwrap<{ cleared: boolean }>("platform/notifications/clear", { method: "POST" }),
+
+  branding: () => unwrap<EventOSConfig["branding"]>("platform/branding"),
+
+  syncTargets: () =>
+    unwrap<{ targets: SyncTarget[]; stats: Record<string, number> }>("platform/sync"),
+  syncHistory: (params: SyncHistoryParams) =>
+    unwrapCollection<SyncRun>(`platform/sync/history${query({ ...params })}`),
+  runSync: (target: string) =>
+    unwrap<SyncRun>("platform/sync/run", { method: "POST", body: JSON.stringify({ target }) }),
+  queueSync: (target: string) =>
+    unwrap<{ job_id: number }>("platform/sync/queue", {
+      method: "POST",
+      body: JSON.stringify({ target }),
+    }),
+  toggleSync: (target: string, enabled: boolean) =>
+    unwrap<{ updated: boolean; targets: SyncTarget[] }>("platform/sync/toggle", {
+      method: "POST",
+      body: JSON.stringify({ target, enabled }),
+    }),
+  clearSyncHistory: () =>
+    unwrap<{ cleared: boolean }>("platform/sync/history/clear", { method: "POST" }),
+
+  diagnostics: () => unwrap<DiagnosticsReport>("platform/diagnostics"),
+  jobs: (params: JobListParams) => unwrapCollection<JobRecord>(`platform/jobs${query({ ...params })}`),
+  retryJob: (id: number) =>
+    unwrap<{ retried: boolean }>("platform/jobs/retry", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+  cancelJob: (id: number) =>
+    unwrap<{ cancelled: boolean }>("platform/jobs/cancel", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+};

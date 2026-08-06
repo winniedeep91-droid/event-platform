@@ -13,6 +13,7 @@ use EventOS\Admin\Admin_Assets;
 use EventOS\Admin\Admin_Menu;
 use EventOS\Modules\Core_Module;
 use EventOS\Modules\Events_Module;
+use EventOS\Modules\Platform_Module;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -109,6 +110,7 @@ final class Plugin {
 	 */
 	public function register_modules(): void {
 		$this->modules->add( new Core_Module() );
+		$this->modules->add( new Platform_Module() );
 		$this->modules->add( new Events_Module() );
 
 		/**

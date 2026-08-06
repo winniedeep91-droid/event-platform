@@ -1132,3 +1132,373 @@ export const platformApi = {
       body: JSON.stringify({ id }),
     }),
 };
+
+// ── WooCommerce integration types ─────────────────────────────────────────
+
+export type WcProductStatus = "publish" | "draft" | "private" | "pending" | "trash";
+export type WcOrderStatus =
+  | "pending"
+  | "processing"
+  | "on-hold"
+  | "completed"
+  | "cancelled"
+  | "refunded"
+  | "failed";
+export type WcStockStatus = "instock" | "outofstock" | "onbackorder";
+export type WcCouponType = "percent" | "fixed_cart" | "fixed_product";
+export type WebhookEvent = "order.created" | "order.updated" | "order.completed" | "order.refunded";
+export type WebhookStatus = "pending" | "processed" | "failed" | "skipped";
+export type WcSyncStatusValue = "idle" | "running" | "error" | "complete";
+
+export interface WcProductRecord {
+  id: number;
+  name: string;
+  slug: string;
+  type: string;
+  status: WcProductStatus;
+  description: string;
+  short_description: string;
+  sku: string;
+  price: number;
+  regular_price: number;
+  sale_price: number | null;
+  stock_quantity: number | null;
+  stock_status: WcStockStatus;
+  manage_stock: boolean;
+  categories: Array<{ id: number; name: string; slug: string }>;
+  tags: Array<{ id: number; name: string; slug: string }>;
+  images: Array<{ id: number; src: string; alt: string }>;
+  eos_event_id: number | null;
+  eos_ticket_type_id: number | null;
+  eos_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WcProductSyncResult {
+  product_id: number;
+  event_id: number;
+  ticket_type_id: number | null;
+  action: "created" | "updated" | "skipped";
+  message: string;
+}
+
+export interface WcAddress {
+  first_name: string;
+  last_name: string;
+  company: string;
+  address_1: string;
+  address_2: string;
+  city: string;
+  state: string;
+  postcode: string;
+  country: string;
+  email: string;
+  phone: string;
+}
+
+export interface WcLineItem {
+  id: number;
+  product_id: number;
+  variation_id: number;
+  name: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+  total: number;
+  tax: number;
+  eos_ticket_type_id: number | null;
+}
+
+export interface WcRefundRecord {
+  id: number;
+  amount: number;
+  reason: string;
+  refunded_by: string;
+  created_at: string;
+}
+
+export interface WcCouponLine {
+  id: number;
+  code: string;
+  discount: number;
+}
+
+export interface WcOrderNote {
+  id: number;
+  note: string;
+  added_by: string;
+  customer_note: boolean;
+  created_at: string;
+}
+
+export interface WcOrderRecord {
+  id: number;
+  wc_order_id: number;
+  status: WcOrderStatus;
+  currency: string;
+  total: number;
+  subtotal: number;
+  tax: number;
+  shipping_total: number;
+  discount_total: number;
+  customer_id: number;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  billing: WcAddress;
+  shipping: WcAddress;
+  payment_method: string;
+  payment_method_title: string;
+  transaction_id: string;
+  line_items: WcLineItem[];
+  refunds: WcRefundRecord[];
+  coupon_lines: WcCouponLine[];
+  notes: WcOrderNote[];
+  eos_event_id: number | null;
+  eos_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WcCustomerRecord {
+  id: number;
+  wc_customer_id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  username: string;
+  avatar_url: string;
+  billing: WcAddress;
+  total_spent: number;
+  total_orders: number;
+  date_created: string;
+  date_modified: string;
+  eos_events_attended: number;
+  eos_attendance_history: AttendanceRecord[];
+  eos_segments: string[];
+  eos_synced_at: string | null;
+}
+
+export interface WcCouponRecord {
+  id: number;
+  wc_coupon_id: number;
+  code: string;
+  type: WcCouponType;
+  amount: number;
+  description: string;
+  usage_count: number;
+  usage_limit: number | null;
+  usage_limit_per_user: number | null;
+  individual_use: boolean;
+  free_shipping: boolean;
+  minimum_amount: number | null;
+  maximum_amount: number | null;
+  date_expires: string | null;
+  eos_campaign_id: number | null;
+  eos_event_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookLogRecord {
+  id: number;
+  event: WebhookEvent;
+  wc_order_id: number;
+  status: WebhookStatus;
+  payload_summary: string;
+  error: string | null;
+  processed_at: string | null;
+  received_at: string;
+}
+
+export interface WcSyncModuleStatus {
+  status: WcSyncStatusValue;
+  last_run: string | null;
+  total: number;
+  synced: number;
+  errors: number;
+}
+
+export interface WcSyncStatus {
+  products: WcSyncModuleStatus;
+  orders: WcSyncModuleStatus;
+  customers: WcSyncModuleStatus;
+  coupons: WcSyncModuleStatus;
+}
+
+export interface WcConnectionStatus {
+  connected: boolean;
+  woocommerce_version: string;
+  store_currency: string;
+  store_url: string;
+  api_accessible: boolean;
+  webhooks_registered: boolean;
+  last_checked: string;
+}
+
+export interface WcListParams {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  status?: string;
+  event_id?: number;
+  synced?: boolean;
+  orderby?: string;
+  order?: string;
+}
+
+export const wcApi = {
+  // ── Connection ────────────────────────────────────────────────────────
+  connectionStatus: () =>
+    unwrap<WcConnectionStatus>("woocommerce/status"),
+
+  recheckConnection: () =>
+    unwrap<WcConnectionStatus>("woocommerce/status/recheck", { method: "POST" }),
+
+  // ── Products ──────────────────────────────────────────────────────────
+  products: (params: WcListParams = {}) => {
+    const safe: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue;
+      safe[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+    }
+    return unwrapCollection<WcProductRecord>(`woocommerce/products${query(safe)}`);
+  },
+
+  product: (id: number) =>
+    unwrap<WcProductRecord>(`woocommerce/products/${id}`),
+
+  syncProducts: (eventId?: number) =>
+    unwrap<{ queued: boolean; job_id: string }>("woocommerce/products/sync", {
+      method: "POST",
+      body: JSON.stringify(eventId ? { event_id: eventId } : {}),
+    }),
+
+  mapProductToEvent: (productId: number, eventId: number, ticketTypeId?: number) =>
+    unwrap<WcProductRecord>(`woocommerce/products/${productId}/map`, {
+      method: "POST",
+      body: JSON.stringify({ event_id: eventId, ticket_type_id: ticketTypeId ?? null }),
+    }),
+
+  unmapProduct: (productId: number) =>
+    unwrap<{ unmapped: boolean }>(`woocommerce/products/${productId}/map`, {
+      method: "DELETE",
+    }),
+
+  // ── Orders ────────────────────────────────────────────────────────────
+  orders: (params: WcListParams = {}) => {
+    const safe: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue;
+      safe[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+    }
+    return unwrapCollection<WcOrderRecord>(`woocommerce/orders${query(safe)}`);
+  },
+
+  order: (id: number) =>
+    unwrap<WcOrderRecord>(`woocommerce/orders/${id}`),
+
+  syncOrders: (eventId?: number) =>
+    unwrap<{ queued: boolean; job_id: string }>("woocommerce/orders/sync", {
+      method: "POST",
+      body: JSON.stringify(eventId ? { event_id: eventId } : {}),
+    }),
+
+  syncOrderStatus: (wcOrderId: number) =>
+    unwrap<{ synced: boolean; eos_event_id: number | null }>(
+      `woocommerce/orders/${wcOrderId}/sync`,
+      { method: "POST" }
+    ),
+
+  exportOrders: (params: WcListParams = {}) =>
+    `${config().restUrl}eventos/v1/woocommerce/orders/export?${new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
+          .map(([k, v]) => [k, String(v)])
+      )
+    ).toString()}&_wpnonce=${config().nonce}`,
+
+  // ── Customers ─────────────────────────────────────────────────────────
+  customers: (params: WcListParams = {}) => {
+    const safe: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue;
+      safe[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+    }
+    return unwrapCollection<WcCustomerRecord>(`woocommerce/customers${query(safe)}`);
+  },
+
+  customer: (id: number) =>
+    unwrap<WcCustomerRecord>(`woocommerce/customers/${id}`),
+
+  syncCustomers: () =>
+    unwrap<{ queued: boolean; job_id: string }>("woocommerce/customers/sync", {
+      method: "POST",
+    }),
+
+  customerSegments: () =>
+    unwrap<{ segments: Array<{ id: string; label: string; count: number }> }>(
+      "woocommerce/customers/segments"
+    ),
+
+  // ── Coupons ───────────────────────────────────────────────────────────
+  coupons: (params: WcListParams = {}) => {
+    const safe: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue;
+      safe[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+    }
+    return unwrapCollection<WcCouponRecord>(`woocommerce/coupons${query(safe)}`);
+  },
+
+  coupon: (id: number) =>
+    unwrap<WcCouponRecord>(`woocommerce/coupons/${id}`),
+
+  assignCouponToCampaign: (wcCouponId: number, campaignId: number, eventId: number) =>
+    unwrap<WcCouponRecord>(`woocommerce/coupons/${wcCouponId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ campaign_id: campaignId, event_id: eventId }),
+    }),
+
+  unassignCoupon: (wcCouponId: number) =>
+    unwrap<{ unassigned: boolean }>(`woocommerce/coupons/${wcCouponId}/assign`, {
+      method: "DELETE",
+    }),
+
+  // ── Sync status ───────────────────────────────────────────────────────
+  syncStatus: () =>
+    unwrap<WcSyncStatus>("woocommerce/sync/status"),
+
+  // ── Webhooks ──────────────────────────────────────────────────────────
+  webhookLog: (params: WcListParams = {}) => {
+    const safe: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === "" || v === false) continue;
+      safe[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+    }
+    return unwrapCollection<WebhookLogRecord>(`woocommerce/webhooks/log${query(safe)}`);
+  },
+
+  registerWebhooks: () =>
+    unwrap<{ registered: WebhookEvent[]; already_registered: WebhookEvent[] }>(
+      "woocommerce/webhooks/register",
+      { method: "POST" }
+    ),
+
+  deregisterWebhooks: () =>
+    unwrap<{ deregistered: WebhookEvent[] }>(
+      "woocommerce/webhooks/register",
+      { method: "DELETE" }
+    ),
+
+  retryWebhook: (logId: number) =>
+    unwrap<{ retried: boolean; status: WebhookStatus }>(
+      `woocommerce/webhooks/log/${logId}/retry`,
+      { method: "POST" }
+    ),
+
+  // ── Log export ────────────────────────────────────────────────────────
+  exportLog: () =>
+    `${config().restUrl}eventos/v1/woocommerce/log/export?_wpnonce=${config().nonce}`,
+};

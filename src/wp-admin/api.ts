@@ -448,6 +448,272 @@ export interface EventFormOptions {
   users: Array<{ id: number; name: string; email: string }>;
 }
 
+// ── Ticketing types ───────────────────────────────────────────────────────
+
+export type TicketTier =
+  "standard" | "early_bird" | "vip" | "table" | "backstage" | "complimentary" | "custom";
+export type TicketVisibility = "public" | "private" | "hidden";
+export type TicketStatus = "active" | "paused" | "sold_out" | "archived";
+
+export interface TicketTypeRecord {
+  id: number;
+  event_id: number;
+  wc_product_id: number;
+  name: string;
+  description: string;
+  tier: TicketTier;
+  price: number;
+  capacity: number | null;
+  sold: number;
+  reserved: number;
+  available: number | null;
+  visibility: TicketVisibility;
+  status: TicketStatus;
+  sale_start: string | null;
+  sale_end: string | null;
+  min_per_order: number;
+  max_per_order: number | null;
+  waitlist_enabled: boolean;
+  waitlist_count: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComplimentaryPayload {
+  ticket_type_id: number;
+  quantity: number;
+  recipient_name: string;
+  recipient_email: string;
+  label?: string;
+  note?: string;
+}
+
+// ── Order types ───────────────────────────────────────────────────────────
+
+export type OrderStatus =
+  "pending" | "processing" | "on-hold" | "completed" | "cancelled" | "refunded" | "failed";
+
+export interface OrderRecord {
+  id: number;
+  wc_order_id: number;
+  event_id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_email: string;
+  status: OrderStatus;
+  payment_method: string;
+  total: number;
+  subtotal: number;
+  tax: number;
+  currency: string;
+  ticket_count: number;
+  tickets: OrderTicket[];
+  refunds: OrderRefund[];
+  notes: string;
+  billing_address: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderTicket {
+  id: number;
+  ticket_type_id: number;
+  ticket_type_name: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+export interface OrderRefund {
+  id: number;
+  amount: number;
+  reason: string;
+  created_at: string;
+}
+
+export interface OrderListParams {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  status?: string;
+  orderby?: string;
+  order?: string;
+  [key: string]: string | number | undefined;
+}
+
+// ── Guest types ───────────────────────────────────────────────────────────
+
+export type GuestStatus = "confirmed" | "waitlisted" | "cancelled" | "no_show";
+
+export interface GuestRecord {
+  id: number;
+  event_id: number;
+  wc_order_id: number;
+  ticket_type_id: number;
+  ticket_type_name: string;
+  ticket_number: string;
+  customer_id: number;
+  name: string;
+  email: string;
+  phone: string;
+  status: GuestStatus;
+  checked_in: boolean;
+  checked_in_at: string | null;
+  checked_in_by: string | null;
+  is_complimentary: boolean;
+  tags: string[];
+  notes: GuestNote[];
+  attendance_history: AttendanceRecord[];
+  created_at: string;
+}
+
+export interface GuestNote {
+  id: number;
+  note: string;
+  author: string;
+  created_at: string;
+}
+
+export interface AttendanceRecord {
+  event_id: number;
+  event_title: string;
+  event_starts_at: string | null;
+  checked_in: boolean;
+  checked_in_at: string | null;
+}
+
+export interface GuestListParams {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  status?: string;
+  ticket_type_id?: number;
+  checked_in?: boolean;
+  orderby?: string;
+  order?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+// ── Scanner types ─────────────────────────────────────────────────────────
+
+export type ScanOutcome = "admitted" | "already_scanned" | "invalid" | "cancelled";
+
+export interface ScanRecord {
+  id: number;
+  event_id: number;
+  ticket_number: string;
+  guest_name: string;
+  ticket_type_name: string;
+  outcome: ScanOutcome;
+  method: "qr" | "manual";
+  operator: string;
+  device: string;
+  entry_point: string;
+  scanned_at: string;
+}
+
+export interface ScanResult {
+  valid: boolean;
+  outcome: ScanOutcome;
+  message: string;
+  ticket_number: string;
+  guest_name: string;
+  ticket_type_name: string;
+  already_scanned_at: string | null;
+}
+
+export interface ScannerSession {
+  id: number;
+  event_id: number;
+  operator: string;
+  device: string;
+  entry_point: string;
+  scans: number;
+  started_at: string;
+  ended_at: string | null;
+}
+
+// ── Marketing types ───────────────────────────────────────────────────────
+
+export type CampaignStatus = "draft" | "active" | "paused" | "expired" | "archived";
+export type DiscountType = "percent" | "fixed";
+
+export interface DiscountCampaign {
+  id: number;
+  event_id: number;
+  wc_coupon_id: number;
+  name: string;
+  code: string;
+  type: DiscountType;
+  value: number;
+  status: CampaignStatus;
+  applies_to: "all" | "specific_types";
+  ticket_type_ids: number[];
+  min_spend: number | null;
+  max_uses: number | null;
+  uses: number;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface PromoLink {
+  id: number;
+  event_id: number;
+  label: string;
+  url: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  clicks: number;
+  created_at: string;
+}
+
+export interface AudienceSegment {
+  id: number;
+  name: string;
+  description: string;
+  criteria: Record<string, unknown>;
+  count: number;
+}
+
+// ── Report types ──────────────────────────────────────────────────────────
+
+export interface EventReportPayload {
+  summary: {
+    gross_revenue: number;
+    net_revenue: number;
+    refunds: number;
+    tickets_sold: number;
+    tickets_available: number | null;
+    capacity: number | null;
+    attendance_rate: number | null;
+    checked_in: number;
+    complimentary: number;
+    average_order_value: number;
+    orders: number;
+  };
+  revenue_by_day: Array<{ date: string; gross: number; net: number; orders: number }>;
+  revenue_by_ticket_type: Array<{
+    ticket_type_id: number;
+    name: string;
+    tier: TicketTier;
+    sold: number;
+    gross: number;
+    net: number;
+    capacity: number | null;
+  }>;
+  sales_velocity: Array<{ date: string; tickets: number }>;
+  top_customers: Array<{
+    customer_id: number;
+    name: string;
+    email: string;
+    orders: number;
+    spend: number;
+  }>;
+  refund_breakdown: Array<{ date: string; amount: number; count: number }>;
+}
+
 export interface EventListParams {
   [key: string]: string | number | undefined;
   search?: string;
@@ -494,7 +760,9 @@ export const eventsApi = {
   options: () => unwrap<EventFormOptions>("events/options"),
   list: (params: EventListParams) => unwrapCollection<EventRecord>(`events${query(params)}`),
   calendar: (from: string, to: string) =>
-    unwrap<{ from: string; to: string; events: EventRecord[] }>(`events/calendar${query({ from, to })}`),
+    unwrap<{ from: string; to: string; events: EventRecord[] }>(
+      `events/calendar${query({ from, to })}`,
+    ),
   get: (id: number) => unwrap<EventRecord>(`events/${id}`),
   create: (payload: EventPayload) =>
     unwrap<EventRecord>("events", { method: "POST", body: JSON.stringify(payload) }),
@@ -502,7 +770,10 @@ export const eventsApi = {
     unwrap<EventRecord>(`events/${id}`, { method: "POST", body: JSON.stringify(payload) }),
   remove: (id: number) => unwrap<{ deleted: boolean }>(`events/${id}`, { method: "DELETE" }),
   transition: (id: number, status: string) =>
-    unwrap<EventRecord>(`events/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+    unwrap<EventRecord>(`events/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
   duplicate: (id: number) => unwrap<EventRecord>(`events/${id}/duplicate`, { method: "POST" }),
   generateOccurrences: (id: number, recurrence: EventRecurrence) =>
     unwrap<{ created: number[] } | EventRecord[]>(`events/${id}/occurrences`, {
@@ -539,4 +810,121 @@ export const eventsApi = {
     }),
   removeTerm: (taxonomy: EventTaxonomy, id: number) =>
     unwrap<{ deleted: boolean }>(`event-terms/${taxonomy}/${id}`, { method: "DELETE" }),
+
+  // ── Ticketing ──────────────────────────────────────────────────────────
+  ticketTypes: (eventId: number) =>
+    unwrap<{ ticket_types: TicketTypeRecord[] }>(`events/${eventId}/ticket-types`),
+  createTicketType: (eventId: number, payload: EventPayload) =>
+    unwrap<TicketTypeRecord>(`events/${eventId}/ticket-types`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateTicketType: (eventId: number, typeId: number, payload: EventPayload) =>
+    unwrap<TicketTypeRecord>(`events/${eventId}/ticket-types/${typeId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  removeTicketType: (eventId: number, typeId: number) =>
+    unwrap<{ deleted: boolean }>(`events/${eventId}/ticket-types/${typeId}`, { method: "DELETE" }),
+  reorderTicketTypes: (eventId: number, ids: number[]) =>
+    unwrap<{ reordered: boolean }>(`events/${eventId}/ticket-types/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  issueComplimentary: (eventId: number, payload: ComplimentaryPayload) =>
+    unwrap<{ issued: number; ticket_ids: number[] }>(`events/${eventId}/complimentary`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // ── Orders ────────────────────────────────────────────────────────────
+  eventOrders: (eventId: number, params: OrderListParams) =>
+    unwrapCollection<OrderRecord>(`events/${eventId}/orders${query(params)}`),
+  exportOrders: (eventId: number, format: "csv" | "xlsx") =>
+    `${config().restUrl}eventos/v1/events/${eventId}/orders/export?format=${format}&_wpnonce=${config().nonce}`,
+
+  // ── Guests ────────────────────────────────────────────────────────────
+  eventGuests: (eventId: number, params: GuestListParams) =>
+    unwrapCollection<GuestRecord>(
+      `events/${eventId}/guests${query({
+        ...params,
+        checked_in: params.checked_in !== undefined ? String(params.checked_in) : undefined,
+      } as Record<string, string | number | undefined>)}`,
+    ),
+  guest: (eventId: number, guestId: number) =>
+    unwrap<GuestRecord>(`events/${eventId}/guests/${guestId}`),
+  checkinGuest: (eventId: number, guestId: number) =>
+    unwrap<{ checked_in: boolean; checked_in_at: string }>(
+      `events/${eventId}/guests/${guestId}/checkin`,
+      { method: "POST" },
+    ),
+  undoCheckin: (eventId: number, guestId: number) =>
+    unwrap<{ checked_in: boolean }>(`events/${eventId}/guests/${guestId}/checkin`, {
+      method: "DELETE",
+    }),
+  addGuestNote: (eventId: number, guestId: number, note: string) =>
+    unwrap<GuestNote>(`events/${eventId}/guests/${guestId}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+  updateGuestTags: (eventId: number, guestId: number, tags: string[]) =>
+    unwrap<GuestRecord>(`events/${eventId}/guests/${guestId}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    }),
+
+  // ── Scanner ───────────────────────────────────────────────────────────
+  scannerSessions: (eventId: number) =>
+    unwrap<{ sessions: ScannerSession[] }>(`events/${eventId}/scanner/sessions`),
+  scanHistory: (eventId: number, params?: { page?: number; per_page?: number }) =>
+    unwrapCollection<ScanRecord>(`events/${eventId}/scanner/history${query(params ?? {})}`),
+  validateTicket: (eventId: number, code: string, method: "qr" | "manual") =>
+    unwrap<ScanResult>(`events/${eventId}/scanner/validate`, {
+      method: "POST",
+      body: JSON.stringify({ code, method }),
+    }),
+  undoScan: (eventId: number, scanId: number) =>
+    unwrap<{ reversed: boolean }>(`events/${eventId}/scanner/history/${scanId}`, {
+      method: "DELETE",
+    }),
+  liveCount: (eventId: number) =>
+    unwrap<{ checked_in: number; total: number; capacity: number }>(
+      `events/${eventId}/scanner/count`,
+    ),
+
+  // ── Marketing ─────────────────────────────────────────────────────────
+  discountCampaigns: (eventId: number) =>
+    unwrap<{ campaigns: DiscountCampaign[] }>(`events/${eventId}/marketing/campaigns`),
+  createDiscountCampaign: (eventId: number, payload: EventPayload) =>
+    unwrap<DiscountCampaign>(`events/${eventId}/marketing/campaigns`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateDiscountCampaign: (eventId: number, campaignId: number, payload: EventPayload) =>
+    unwrap<DiscountCampaign>(`events/${eventId}/marketing/campaigns/${campaignId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  removeDiscountCampaign: (eventId: number, campaignId: number) =>
+    unwrap<{ deleted: boolean }>(`events/${eventId}/marketing/campaigns/${campaignId}`, {
+      method: "DELETE",
+    }),
+  promoLinks: (eventId: number) =>
+    unwrap<{ links: PromoLink[] }>(`events/${eventId}/marketing/links`),
+  createPromoLink: (eventId: number, payload: EventPayload) =>
+    unwrap<PromoLink>(`events/${eventId}/marketing/links`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  removePromoLink: (eventId: number, linkId: number) =>
+    unwrap<{ deleted: boolean }>(`events/${eventId}/marketing/links/${linkId}`, {
+      method: "DELETE",
+    }),
+  audiences: (eventId: number) =>
+    unwrap<{ audiences: AudienceSegment[] }>(`events/${eventId}/marketing/audiences`),
+
+  // ── Reports ───────────────────────────────────────────────────────────
+  eventReport: (eventId: number) => unwrap<EventReportPayload>(`events/${eventId}/reports`),
+  exportReport: (eventId: number, format: "csv" | "pdf") =>
+    `${config().restUrl}eventos/v1/events/${eventId}/reports/export?format=${format}&_wpnonce=${config().nonce}`,
 };

@@ -8,9 +8,7 @@ import {
   Button,
   Card,
   ConfirmDialog,
-  DataTable,
   DateTimePicker,
-  DefinitionList,
   Grid,
   Input,
   LoadingState,
@@ -18,12 +16,10 @@ import {
   PageLayout,
   Select,
   Stack,
-  StatCard,
   StatusChip,
   Tabs,
   Textarea,
   useToast,
-  type DataTableColumn,
   type SelectOption,
   type TabItem,
 } from "../../ui";
@@ -39,102 +35,27 @@ import {
   toLocalInput,
   venueLabel,
 } from "./shared";
+import {
+  GuestsTab,
+  MarketingTab,
+  OrdersTab,
+  OverviewTab,
+  ReportsTab,
+  ScannerTab,
+  TicketingTab,
+} from "./tabs";
 
-/** Placeholder for tabs whose module ships in a later build. */
-function ModuleTab({ title, description }: { title: string; description: string }) {
-  return (
-    <Card title={title}>
-      <Alert tone="info" title={`${title} is not installed`}>
-        {description}
-      </Alert>
-    </Card>
-  );
-}
+/** Removed: ModuleTab placeholder replaced by real tab implementations. */
 
-function OverviewTab({ event, statuses }: { event: EventRecord; statuses?: Record<string, string> }) {
-  const artistColumns: DataTableColumn<NonNullable<EventRecord["artists"]>[number]> = {
-    key: "artist_name",
-    header: "Artist",
-    cell: (row) => <strong>{row.artist_name}</strong>,
-  };
-
-  return (
-    <Stack>
-      <Grid>
-        <StatCard label="Capacity" value={event.capacity || "—"} />
-        <StatCard label="Line-up" value={event.artists?.length ?? 0} hint="Artists booked" />
-        <StatCard label="Schedule items" value={event.schedules?.length ?? 0} />
-        <StatCard label="Media" value={event.media?.length ?? 0} />
-      </Grid>
-
-      <Card title="Event details">
-        <DefinitionList
-          items={[
-            { term: "Status", value: statusLabel(event.status, statuses) },
-            { term: "Visibility", value: statusLabel(event.visibility) },
-            { term: "Ticket visibility", value: statusLabel(event.ticket_visibility) },
-            { term: "Starts", value: formatDateTime(event.starts_at) },
-            { term: "Ends", value: formatDateTime(event.ends_at) },
-            { term: "Doors open", value: formatDateTime(event.doors_open_at) },
-            { term: "Venue", value: venueLabel(event) },
-            { term: "Timezone", value: event.timezone || "—" },
-            { term: "Age restriction", value: event.age_restriction || "—" },
-            { term: "Accessibility", value: event.accessibility || "—" },
-            { term: "Slug", value: event.slug },
-            { term: "Last updated", value: formatDateTime(event.updated_at) },
-          ]}
-        />
-      </Card>
-
-      {event.short_description || event.description ? (
-        <Card title="Description">
-          <Stack>
-            {event.short_description ? <p>{event.short_description}</p> : null}
-            {event.description ? <p className="eos-page__description">{event.description}</p> : null}
-          </Stack>
-        </Card>
-      ) : null}
-
-      <Card title="Line-up">
-        <DataTable
-          caption="Artists booked for this event"
-          columns={[
-            artistColumns,
-            { key: "billing", header: "Billing", cell: (row) => row.billing || "—" },
-            { key: "stage", header: "Stage", cell: (row) => row.stage || "—" },
-            { key: "starts_at", header: "Set time", cell: (row) => formatDateTime(row.starts_at) },
-          ]}
-          rows={event.artists ?? []}
-          getRowId={(row) => String(row.id)}
-          emptyTitle="No artists booked"
-          emptyDescription="Attach artists from the event settings tab."
-        />
-      </Card>
-
-      <Card title="Running order">
-        <DataTable
-          caption="Schedule for this event"
-          columns={[
-            { key: "label", header: "Item", cell: (row) => <strong>{row.label}</strong> },
-            { key: "type", header: "Type", cell: (row) => statusLabel(row.type) },
-            { key: "stage", header: "Stage", cell: (row) => row.stage || "—" },
-            { key: "artist_name", header: "Artist", cell: (row) => row.artist_name || "—" },
-            { key: "starts_at", header: "Starts", cell: (row) => formatDateTime(row.starts_at) },
-            { key: "ends_at", header: "Ends", cell: (row) => formatDateTime(row.ends_at) },
-          ]}
-          rows={event.schedules ?? []}
-          getRowId={(row) => String(row.id)}
-          emptyTitle="No schedule yet"
-        />
-      </Card>
-    </Stack>
-  );
-}
+/** Removed: LocalOverviewTab - replaced by imported OverviewTab from ./tabs */
 
 function SettingsTab({ event }: { event: EventRecord }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const options = useQuery({ queryKey: ["eventos", "events", "options"], queryFn: eventsApi.options });
+  const options = useQuery({
+    queryKey: ["eventos", "events", "options"],
+    queryFn: eventsApi.options,
+  });
 
   const [form, setForm] = useState({
     title: event.title,
@@ -198,8 +119,17 @@ function SettingsTab({ event }: { event: EventRecord }) {
         }
       >
         <Stack>
-          <Input label="Title" value={form.title} onChange={(e) => set("title", e.target.value)} required />
-          <Input label="Subtitle" value={form.subtitle} onChange={(e) => set("subtitle", e.target.value)} />
+          <Input
+            label="Title"
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            required
+          />
+          <Input
+            label="Subtitle"
+            value={form.subtitle}
+            onChange={(e) => set("subtitle", e.target.value)}
+          />
           <Textarea
             label="Short description"
             rows={2}
@@ -214,9 +144,21 @@ function SettingsTab({ event }: { event: EventRecord }) {
           />
 
           <Grid minColumnWidth={240}>
-            <DateTimePicker label="Starts at" value={form.starts_at} onChange={(v) => set("starts_at", v)} />
-            <DateTimePicker label="Ends at" value={form.ends_at} onChange={(v) => set("ends_at", v)} />
-            <DateTimePicker label="Doors open" value={form.doors_open_at} onChange={(v) => set("doors_open_at", v)} />
+            <DateTimePicker
+              label="Starts at"
+              value={form.starts_at}
+              onChange={(v) => set("starts_at", v)}
+            />
+            <DateTimePicker
+              label="Ends at"
+              value={form.ends_at}
+              onChange={(v) => set("ends_at", v)}
+            />
+            <DateTimePicker
+              label="Doors open"
+              value={form.doors_open_at}
+              onChange={(v) => set("doors_open_at", v)}
+            />
           </Grid>
 
           <Grid minColumnWidth={240}>
@@ -233,7 +175,10 @@ function SettingsTab({ event }: { event: EventRecord }) {
             <Select
               label="Timezone"
               value={form.timezone || options.data?.default_timezone || "UTC"}
-              options={(options.data?.timezones ?? []).map<SelectOption>((zone) => ({ value: zone, label: zone }))}
+              options={(options.data?.timezones ?? []).map<SelectOption>((zone) => ({
+                value: zone,
+                label: zone,
+              }))}
               onChange={(e) => set("timezone", e.target.value)}
             />
             <Input
@@ -259,17 +204,17 @@ function SettingsTab({ event }: { event: EventRecord }) {
             <Select
               label="Visibility"
               value={form.visibility}
-              options={Object.entries(options.data?.visibilities ?? { public: "Public" }).map<SelectOption>(
-                ([value, label]) => ({ value, label: String(label) }),
-              )}
+              options={Object.entries(
+                options.data?.visibilities ?? { public: "Public" },
+              ).map<SelectOption>(([value, label]) => ({ value, label: String(label) }))}
               onChange={(e) => set("visibility", e.target.value)}
             />
             <Select
               label="Ticket visibility"
               value={form.ticket_visibility}
-              options={Object.entries(options.data?.ticket_visibilities ?? { public: "Public" }).map<SelectOption>(
-                ([value, label]) => ({ value, label: String(label) }),
-              )}
+              options={Object.entries(
+                options.data?.ticket_visibilities ?? { public: "Public" },
+              ).map<SelectOption>(([value, label]) => ({ value, label: String(label) }))}
               onChange={(e) => set("ticket_visibility", e.target.value)}
             />
           </Grid>
@@ -317,14 +262,20 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
     queryKey: ["eventos", "events", "detail", eventId],
     queryFn: () => eventsApi.get(eventId),
   });
-  const options = useQuery({ queryKey: ["eventos", "events", "options"], queryFn: eventsApi.options });
+  const options = useQuery({
+    queryKey: ["eventos", "events", "options"],
+    queryFn: eventsApi.options,
+  });
 
   const event = detail.data;
 
   const transition = useMutation({
     mutationFn: (status: string) => eventsApi.transition(eventId, status),
     onSuccess: (updated) => {
-      toast.success(`Status changed to ${statusLabel(updated.status, options.data?.statuses)}.`, "Status updated");
+      toast.success(
+        `Status changed to ${statusLabel(updated.status, options.data?.statuses)}.`,
+        "Status updated",
+      );
       void queryClient.invalidateQueries({ queryKey: ["eventos", "events"] });
     },
     onError: (error: unknown) => toast.error(errorMessage(error), "Transition failed"),
@@ -346,66 +297,40 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
     if (!event) return [];
 
     return [
-      { id: "overview", label: "Overview", content: <OverviewTab event={event} statuses={options.data?.statuses} /> },
+      {
+        id: "overview",
+        label: "Overview",
+        content: <OverviewTab event={event} statuses={options.data?.statuses} />,
+      },
       {
         id: "ticketing",
         label: "Ticketing",
-        content: (
-          <ModuleTab
-            title="Ticketing"
-            description="Ticket types, pricing tiers and allocations are delivered by the Ticketing module. Once it is installed, this tab manages the inventory for this event."
-          />
-        ),
+        content: <TicketingTab eventId={event.id} />,
       },
       {
         id: "orders",
         label: "Orders",
-        content: (
-          <ModuleTab
-            title="Orders"
-            description="Order history, refunds and payment reconciliation for this event appear here once the Ticketing module is installed."
-          />
-        ),
+        content: <OrdersTab eventId={event.id} />,
       },
       {
         id: "guests",
         label: "Guests",
-        content: (
-          <ModuleTab
-            title="Guest list"
-            description="Guest lists, comps and door notes for this event appear here once the Ticketing module is installed."
-          />
-        ),
+        content: <GuestsTab eventId={event.id} />,
       },
       {
         id: "scanner",
         label: "Scanner",
-        content: (
-          <ModuleTab
-            title="Scanner"
-            description="Door scanning sessions, device pairing and live admission counts appear here once the Scanning module is installed."
-          />
-        ),
+        content: <ScannerTab eventId={event.id} />,
       },
       {
         id: "marketing",
         label: "Marketing",
-        content: (
-          <ModuleTab
-            title="Marketing"
-            description="Campaigns, audiences and promotional links for this event appear here once the Marketing module is installed."
-          />
-        ),
+        content: <MarketingTab eventId={event.id} />,
       },
       {
         id: "reports",
         label: "Reports",
-        content: (
-          <ModuleTab
-            title="Reports"
-            description="Sales, attendance and settlement reporting for this event appear here once the Finance module is installed."
-          />
-        ),
+        content: <ReportsTab eventId={event.id} />,
       },
       { id: "settings", label: "Settings", content: <SettingsTab event={event} /> },
     ];
@@ -424,7 +349,11 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
       <PageLayout
         title="Event"
         description="This event could not be loaded."
-        actions={<a className="eos-btn eos-btn--secondary" href={pageUrl(EVENTS_PAGES.list)}>Back to events</a>}
+        actions={
+          <a className="eos-btn eos-btn--secondary" href={pageUrl(EVENTS_PAGES.list)}>
+            Back to events
+          </a>
+        }
       >
         <Alert tone="danger" title="Event unavailable">
           {detail.error ? errorMessage(detail.error) : "That record no longer exists."}
@@ -439,7 +368,12 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
     <PageLayout
       title={event.title}
       description={`${formatDateTime(event.starts_at)} · ${venueLabel(event)}`}
-      aside={<StatusChip status={statusKind(event.status)} label={statusLabel(event.status, options.data?.statuses)} />}
+      aside={
+        <StatusChip
+          status={statusKind(event.status)}
+          label={statusLabel(event.status, options.data?.statuses)}
+        />
+      }
       actions={
         <>
           <a className="eos-btn eos-btn--secondary" href={pageUrl(EVENTS_PAGES.list)}>
@@ -473,7 +407,9 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
         <div className="eos-inline">
           <Badge tone="neutral">Slug: {event.slug}</Badge>
           {event.password_protected ? <Badge tone="warning">Password protected</Badge> : null}
-          {event.recurrence && Object.keys(event.recurrence).length ? <Badge tone="info">Recurring</Badge> : null}
+          {event.recurrence && Object.keys(event.recurrence).length ? (
+            <Badge tone="info">Recurring</Badge>
+          ) : null}
         </div>
 
         <Tabs label="Event workspace" items={tabs} value={tab} onChange={setTab} />

@@ -28,7 +28,7 @@ const PER_PAGE = 20;
 
 export function ActivityView() {
   const queryClient = useQueryClient();
-  const { push } = useToast();
+  const toast = useToast();
 
   const [search, setSearch] = useState("");
   const [module, setModule] = useState("");
@@ -58,10 +58,10 @@ export function ActivityView() {
     mutationFn: () => platformApi.purgeActivity(purgeDays),
     onSuccess: (result) => {
       setPurgeOpen(false);
-      push({ tone: "success", title: `${result.deleted} entries removed.` });
+      toast.success(`${result.deleted} entries removed.`);
       void queryClient.invalidateQueries({ queryKey: ["eventos", "platform"] });
     },
-    onError: (error: Error) => push({ tone: "danger", title: error.message }),
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const columns: DataTableColumn<ActivityEntryRecord>[] = [

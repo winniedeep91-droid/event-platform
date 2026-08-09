@@ -59,23 +59,26 @@ export function OrganisationSettingsView() {
             label="Settings groups"
             value={current?.group ?? groups[0].group}
             onChange={setActive}
-            items={groups.map((group) => ({ id: group.group, label: group.label }))}
+            items={groups.map((group) => ({
+              id: group.group,
+              label: group.label,
+              content: (
+                <Section title={group.label} description={group.description}>
+                  <Card>
+                    <SettingsForm
+                      key={group.group}
+                      group={group}
+                      values={settings.data?.values[group.group] ?? {}}
+                      saving={save.isPending}
+                      onSubmit={(values) => save.mutate({ group: group.group, values })}
+                    />
+                  </Card>
+                </Section>
+              ),
+            }))}
           />
         ) : null}
 
-        {current ? (
-          <Section title={current.label} description={current.description}>
-            <Card>
-              <SettingsForm
-                key={current.group}
-                group={current}
-                values={settings.data?.values[current.group] ?? {}}
-                saving={save.isPending}
-                onSubmit={(values) => save.mutate({ group: current.group, values })}
-              />
-            </Card>
-          </Section>
-        ) : null}
       </Stack>
     </PageLayout>
   );

@@ -18,6 +18,15 @@ import {
   ArtistsView,
   EventTermsView,
 } from "./views/events";
+import {
+  ActivityView,
+  AuditView,
+  BrandingView,
+  DiagnosticsView,
+  NotificationsView,
+  OrganisationSettingsView,
+  SyncView,
+} from "./views/platform";
 import { queryParam } from "./views/events/shared";
 
 function Nav({ view }: { view: string }) {
@@ -656,6 +665,22 @@ export function AdminApp({ view }: { view: string }) {
     const taxonomy: EventTaxonomy =
       rawTaxonomy === "category" || rawTaxonomy === "tag" ? rawTaxonomy : "category";
     content = <EventTermsView taxonomy={taxonomy} />;
+
+    // ── Platform ────────────────────────────────────────────────────────────
+  } else if (view === "platform/activity") {
+    content = <ActivityView />;
+  } else if (view === "platform/audit") {
+    content = <AuditView />;
+  } else if (view === "platform/notifications") {
+    content = <NotificationsView />;
+  } else if (view === "platform/branding") {
+    content = <BrandingView />;
+  } else if (view === "platform/sync") {
+    content = <SyncView />;
+  } else if (view === "platform/diagnostics") {
+    content = <DiagnosticsView />;
+  } else if (view === "platform/settings") {
+    content = <OrganisationSettingsView />;
 
     // ── Settings ────────────────────────────────────────────────────────────
   } else if (view === "settings/team") {

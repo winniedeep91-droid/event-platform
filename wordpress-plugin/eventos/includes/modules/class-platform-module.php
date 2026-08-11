@@ -104,6 +104,12 @@ final class Platform_Module extends Abstract_Module {
 				'view'       => 'platform/diagnostics',
 				'capability' => Capabilities::MANAGE_SETTINGS,
 			),
+			array(
+				'slug'       => 'eventos-settings',
+				'title'      => __( 'Organisation Settings', 'eventos' ),
+				'view'       => 'platform/settings',
+				'capability' => Capabilities::MANAGE_SETTINGS,
+			),
 		);
 	}
 

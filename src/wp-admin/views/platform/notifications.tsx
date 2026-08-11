@@ -193,15 +193,23 @@ export function NotificationsView() {
           }}
           filters={[
             { key: "type", label: "Type", placeholder: "All types", options: TYPE_OPTIONS },
+            {
+              key: "module",
+              label: "Module",
+              placeholder: "All modules",
+              options: slugOptions(filters.data?.modules ?? []),
+            },
           ]}
-          values={{ type }}
+          values={{ type, module }}
           onFilterChange={(key, value) => {
             if (key === "type") setType(value);
+            if (key === "module") setModule(value);
             setPage(1);
           }}
           onReset={() => {
             setSearch("");
             setType("");
+            setModule("");
             setPage(1);
           }}
         />

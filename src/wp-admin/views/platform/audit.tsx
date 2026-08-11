@@ -22,7 +22,14 @@ import {
   StatCard,
   type DataTableColumn,
 } from "../../ui";
-import { diffRows, formatDateTime, formatValue, humanise, severityTone, slugOptions } from "./shared";
+import {
+  diffRows,
+  formatDateTime,
+  formatValue,
+  humanise,
+  severityTone,
+  slugOptions,
+} from "./shared";
 
 const PER_PAGE = 20;
 

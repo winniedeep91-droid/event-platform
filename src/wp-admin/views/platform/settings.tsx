@@ -78,7 +78,6 @@ export function OrganisationSettingsView() {
             }))}
           />
         ) : null}
-
       </Stack>
     </PageLayout>
   );

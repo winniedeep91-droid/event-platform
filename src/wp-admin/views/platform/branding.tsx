@@ -3,16 +3,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, platformApi } from "../../api";
-import {
-  Alert,
-  Card,
-  Grid,
-  LoadingState,
-  PageLayout,
-  Section,
-  Stack,
-  useToast,
-} from "../../ui";
+import { Alert, Card, Grid, LoadingState, PageLayout, Section, Stack, useToast } from "../../ui";
 import { SettingsForm, type SettingsValues } from "./settings-form";
 import { humanise } from "./shared";
 

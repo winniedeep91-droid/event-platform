@@ -21,7 +21,7 @@ import {
   useToast,
   type DataTableColumn,
 } from "../../ui";
-import { formatDateTime, humanise, severityTone } from "./shared";
+import { formatDateTime, humanise, severityTone, slugOptions } from "./shared";
 
 const PER_PAGE = 20;
 
@@ -38,13 +38,19 @@ export function NotificationsView() {
 
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
+  const [module, setModule] = useState("");
   const [page, setPage] = useState(1);
   const [clearOpen, setClearOpen] = useState(false);
 
   const params = useMemo<NotificationListParams>(
-    () => ({ search, type, page, per_page: PER_PAGE }),
-    [search, type, page],
+    () => ({ search, type, module, page, per_page: PER_PAGE }),
+    [search, type, module, page],
   );
+
+  const filters = useQuery({
+    queryKey: ["eventos", "platform", "activity", "filters"],
+    queryFn: platformApi.activityFilters,
+  });
 
   const notifications = useQuery({
     queryKey: ["eventos", "platform", "notifications", params],
@@ -187,15 +193,23 @@ export function NotificationsView() {
           }}
           filters={[
             { key: "type", label: "Type", placeholder: "All types", options: TYPE_OPTIONS },
+            {
+              key: "module",
+              label: "Module",
+              placeholder: "All modules",
+              options: slugOptions(filters.data?.modules ?? []),
+            },
           ]}
-          values={{ type }}
+          values={{ type, module }}
           onFilterChange={(key, value) => {
             if (key === "type") setType(value);
+            if (key === "module") setModule(value);
             setPage(1);
           }}
           onReset={() => {
             setSearch("");
             setType("");
+            setModule("");
             setPage(1);
           }}
         />

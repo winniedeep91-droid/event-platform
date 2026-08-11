@@ -4,11 +4,7 @@
  * the shared EventOS component library.
  */
 import { useEffect, useState } from "react";
-import {
-  selectAttachment,
-  type SettingsField,
-  type SettingsGroup,
-} from "../../api";
+import { selectAttachment, type SettingsField, type SettingsGroup } from "../../api";
 import {
   Button,
   Grid,

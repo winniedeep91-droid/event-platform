@@ -65,8 +65,7 @@ export function SyncView() {
     queryFn: () => platformApi.syncHistory(params),
   });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["eventos", "platform"] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["eventos", "platform"] });
 
   const run = useMutation({
     mutationFn: (slug: string) => platformApi.runSync(slug),

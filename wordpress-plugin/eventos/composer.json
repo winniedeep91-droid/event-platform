@@ -22,6 +22,7 @@
 	"scripts": {
 		"lint": "phpcs",
 		"lint:fix": "phpcbf",
-		"test": "phpunit"
+		"test": "phpunit",
+		"test:unit": "phpunit --configuration phpunit.unit.xml.dist"
 	}
 }

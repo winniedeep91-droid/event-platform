@@ -1342,6 +1342,7 @@ export interface WcListParams {
   per_page?: number;
   search?: string;
   status?: string;
+  event?: string;
   event_id?: number;
   synced?: boolean;
   orderby?: string;

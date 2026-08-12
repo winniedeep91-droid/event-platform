@@ -159,7 +159,13 @@ export function WebhooksView() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["wc", "webhooks", { event, status, page }],
-    queryFn: () => wcApi.webhookLog({ status: event || status, page, per_page: PER_PAGE }),
+    queryFn: () =>
+      wcApi.webhookLog({
+        event: event || undefined,
+        status: status || undefined,
+        page,
+        per_page: PER_PAGE,
+      }),
     placeholderData: (prev) => prev,
   });
 

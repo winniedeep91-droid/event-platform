@@ -11,14 +11,23 @@ namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
 use EventOS\Capabilities;
+use EventOS\Events\Checkin_Repository;
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Event_Controller;
+use EventOS\Events\Event_Report_Builder;
 use EventOS\Events\Event_Schema;
 use EventOS\Events\Event_Service;
 use EventOS\Events\Event_Status;
+use EventOS\Events\Guest_Repository;
+use EventOS\Events\Ticket_Fulfillment;
+use EventOS\Events\Ticket_Order_Resolver;
+use EventOS\Events\Ticket_Repository;
+use EventOS\Events\Ticket_Type_Repository;
+use EventOS\Events\Ticketing_Service;
 use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
 use EventOS\Rest\Rest_Registry;
+use EventOS\Rest\Ticketing_Controller;
 use EventOS\Search_Registry;
 use EventOS\Settings;
 
@@ -37,6 +46,13 @@ final class Events_Module extends Abstract_Module {
 	 * @var Event_Service|null
 	 */
 	private ?Event_Service $service = null;
+
+	/**
+	 * Ticketing service layer.
+	 *
+	 * @var Ticketing_Service|null
+	 */
+	private ?Ticketing_Service $ticketing_service = null;
 
 	/**
 	 * Module slug.
@@ -85,6 +101,30 @@ final class Events_Module extends Abstract_Module {
 		}
 
 		return $this->service;
+	}
+
+	/**
+	 * Ticketing service accessor.
+	 *
+	 * @return Ticketing_Service
+	 */
+	public function ticketing_service(): Ticketing_Service {
+		if ( null === $this->ticketing_service ) {
+			$ticket_types = new Ticket_Type_Repository();
+			$tickets      = new Ticket_Repository();
+			$order_resolver = new Ticket_Order_Resolver( $ticket_types );
+
+			$this->ticketing_service = new Ticketing_Service(
+				$ticket_types,
+				$tickets,
+				new Guest_Repository(),
+				new Checkin_Repository(),
+				$order_resolver,
+				new Event_Report_Builder( $ticket_types, $tickets, $order_resolver )
+			);
+		}
+
+		return $this->ticketing_service;
 	}
 
 	/**
@@ -219,6 +259,8 @@ final class Events_Module extends Abstract_Module {
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 
 		Import_Registry::bootstrap();
+
+		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository() ) )->bootstrap();
 	}
 
 	/**
@@ -248,6 +290,10 @@ final class Events_Module extends Abstract_Module {
 		$controller = new Event_Controller( $this->service() );
 
 		Rest_Registry::register_many( $controller->endpoints(), $this->slug() );
+
+		$ticketing = new Ticketing_Controller( $this->ticketing_service() );
+
+		Rest_Registry::register_many( $ticketing->endpoints(), $this->slug() );
 	}
 
 	/**
@@ -462,6 +508,57 @@ final class Events_Module extends Abstract_Module {
 						$result = $service->artists()->query( array_merge( $args, array( 'per_page' => 200 ) ) );
 
 						return $result['items'];
+					},
+				),
+				array(
+					'entity'     => 'event_orders',
+					'label'      => __( 'Event orders', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-event-orders',
+					'columns'    => array(
+						'wc_order_id'    => __( 'Order', 'eventos' ),
+						'customer_name'  => __( 'Customer', 'eventos' ),
+						'customer_email' => __( 'Email', 'eventos' ),
+						'ticket_count'   => __( 'Tickets', 'eventos' ),
+						'total'          => __( 'Total', 'eventos' ),
+						'currency'       => __( 'Currency', 'eventos' ),
+						'status'         => __( 'Status', 'eventos' ),
+						'payment_method' => __( 'Payment', 'eventos' ),
+						'created_at'     => __( 'Date', 'eventos' ),
+					),
+					'provider'   => function ( array $args ): array {
+						$event_id = (int) ( $args['event_id'] ?? 0 );
+
+						if ( $event_id <= 0 ) {
+							return array();
+						}
+
+						return $this->ticketing_service()->event_orders( $event_id, array( 'per_page' => 1000 ) )['items'];
+					},
+				),
+				array(
+					'entity'     => 'event_report',
+					'label'      => __( 'Event report', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-event-report',
+					'columns'    => array(
+						'name'     => __( 'Ticket type', 'eventos' ),
+						'tier'     => __( 'Tier', 'eventos' ),
+						'sold'     => __( 'Sold', 'eventos' ),
+						'capacity' => __( 'Capacity', 'eventos' ),
+						'gross'    => __( 'Gross revenue', 'eventos' ),
+						'net'      => __( 'Net revenue', 'eventos' ),
+					),
+					'provider'   => function ( array $args ): array {
+						$event_id = (int) ( $args['event_id'] ?? 0 );
+
+						if ( $event_id <= 0 ) {
+							return array();
+						}
+
+						return $this->ticketing_service()->report( $event_id )['revenue_by_ticket_type'];
 					},
 				),
 			)

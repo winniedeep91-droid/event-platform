@@ -21,6 +21,7 @@ use EventOS\Import\Providers\Quicket_Provider;
 use EventOS\Import\Providers\Webtickets_Provider;
 use EventOS\Import\Providers\WooCommerce_Provider;
 use EventOS\Rest\Docs_Controller;
+use EventOS\Rest\Export_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Search_Registry;
 use EventOS\Invitations;
@@ -31,6 +32,7 @@ use EventOS\Rest\Settings_Controller;
 use EventOS\Rest\Team_Controller;
 use EventOS\Security;
 use EventOS\WooCommerce;
+use WP_REST_Response;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -76,6 +78,7 @@ final class Core_Module implements Module_Interface {
 
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_providers' ) );
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_infrastructure_endpoints' ) );
+		add_filter( 'rest_pre_serve_request', array( $this, 'serve_raw_response' ), 10, 2 );
 		WooCommerce::init();
 
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
@@ -130,9 +133,46 @@ final class Core_Module implements Module_Interface {
 					'envelope'   => false,
 					'summary'    => __( 'OpenAPI 3.1 document for the EventOS API.', 'eventos' ),
 				),
+				array(
+					'route'      => '/exports/(?P<entity>[a-z0-9_-]+)/(?P<format>csv|json|pdf)',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Export_Controller::class, 'download' ),
+					'envelope'   => false,
+					'summary'    => __( 'Download a registered export as CSV, JSON or PDF.', 'eventos' ),
+				),
 			),
 			$this->slug()
 		);
+	}
+
+	/**
+	 * Serve a raw (non-JSON) response body for download endpoints.
+	 *
+	 * @param bool $served Whether the request has already been served.
+	 * @param mixed $result Response result.
+	 * @return bool
+	 */
+	public function serve_raw_response( $served, $result ) {
+		if ( ! $result instanceof WP_REST_Response ) {
+			return $served;
+		}
+
+		$headers = $result->get_headers();
+
+		if ( empty( $headers['X-EventOS-Raw-Body'] ) ) {
+			return $served;
+		}
+
+		unset( $headers['X-EventOS-Raw-Body'] );
+
+		foreach ( $headers as $key => $value ) {
+			header( "{$key}: {$value}" );
+		}
+
+		echo (string) $result->get_data(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+		return true;
 	}
 
 	/**

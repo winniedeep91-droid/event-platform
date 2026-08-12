@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.0.0';
+	public const VERSION = '1.1.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -119,6 +119,42 @@ final class Event_Schema {
 	 */
 	public static function schedules(): string {
 		return self::table( 'event_schedules' );
+	}
+
+	/**
+	 * Ticket types table.
+	 *
+	 * @return string
+	 */
+	public static function ticket_types(): string {
+		return self::table( 'ticket_types' );
+	}
+
+	/**
+	 * Individual ticket records table.
+	 *
+	 * @return string
+	 */
+	public static function tickets(): string {
+		return self::table( 'tickets' );
+	}
+
+	/**
+	 * Guests/attendees table.
+	 *
+	 * @return string
+	 */
+	public static function guests(): string {
+		return self::table( 'guests' );
+	}
+
+	/**
+	 * Check-in scan log table.
+	 *
+	 * @return string
+	 */
+	public static function checkins(): string {
+		return self::table( 'checkins' );
 	}
 
 	/**
@@ -301,6 +337,107 @@ final class Event_Schema {
 			KEY event_id (event_id),
 			KEY artist_id (artist_id),
 			KEY starts_at (starts_at)
+		) {$collate};";
+
+		$ticket_types = self::ticket_types();
+
+		$schema[] = "CREATE TABLE {$ticket_types} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			name VARCHAR(191) NOT NULL,
+			description TEXT NULL,
+			tier VARCHAR(30) NOT NULL DEFAULT 'standard',
+			price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+			capacity INT UNSIGNED NULL,
+			visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			sale_start DATETIME NULL,
+			sale_end DATETIME NULL,
+			min_per_order INT UNSIGNED NOT NULL DEFAULT 1,
+			max_per_order INT UNSIGNED NULL,
+			waitlist_enabled TINYINT UNSIGNED NOT NULL DEFAULT 0,
+			wc_product_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			position INT NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY event_id (event_id),
+			KEY wc_product_id (wc_product_id),
+			KEY status (status)
+		) {$collate};";
+
+		$tickets = self::tickets();
+
+		$schema[] = "CREATE TABLE {$tickets} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			ticket_type_id BIGINT UNSIGNED NOT NULL,
+			guest_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			wc_order_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			wc_order_item_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			wc_customer_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			ticket_number VARCHAR(40) NOT NULL,
+			qr_token CHAR(40) NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			is_complimentary TINYINT UNSIGNED NOT NULL DEFAULT 0,
+			checked_in TINYINT UNSIGNED NOT NULL DEFAULT 0,
+			checked_in_at DATETIME NULL,
+			checked_in_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY ticket_number (ticket_number),
+			UNIQUE KEY qr_token (qr_token),
+			KEY event_id (event_id),
+			KEY ticket_type_id (ticket_type_id),
+			KEY guest_id (guest_id),
+			KEY wc_order_id (wc_order_id),
+			KEY wc_order_item_id (wc_order_item_id),
+			KEY wc_customer_id (wc_customer_id),
+			KEY checked_in (checked_in)
+		) {$collate};";
+
+		$guests = self::guests();
+
+		$schema[] = "CREATE TABLE {$guests} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			ticket_id BIGINT UNSIGNED NOT NULL,
+			wc_customer_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			name VARCHAR(191) NOT NULL DEFAULT '',
+			email VARCHAR(191) NOT NULL DEFAULT '',
+			phone VARCHAR(50) NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'confirmed',
+			tags TEXT NULL,
+			notes LONGTEXT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY ticket_id (ticket_id),
+			KEY event_id (event_id),
+			KEY wc_customer_id (wc_customer_id),
+			KEY email (email),
+			KEY status (status)
+		) {$collate};";
+
+		$checkins = self::checkins();
+
+		$schema[] = "CREATE TABLE {$checkins} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			ticket_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			scanned_value VARCHAR(191) NOT NULL DEFAULT '',
+			outcome VARCHAR(20) NOT NULL DEFAULT 'invalid',
+			method VARCHAR(10) NOT NULL DEFAULT 'manual',
+			operator_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			device VARCHAR(191) NOT NULL DEFAULT '',
+			entry_point VARCHAR(191) NOT NULL DEFAULT '',
+			scanned_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY event_id (event_id),
+			KEY ticket_id (ticket_id),
+			KEY outcome (outcome),
+			KEY scanned_at (scanned_at)
 		) {$collate};";
 
 		foreach ( $schema as $statement ) {

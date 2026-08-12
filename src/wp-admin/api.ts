@@ -840,8 +840,8 @@ export const eventsApi = {
   // ── Orders ────────────────────────────────────────────────────────────
   eventOrders: (eventId: number, params: OrderListParams) =>
     unwrapCollection<OrderRecord>(`events/${eventId}/orders${query(params)}`),
-  exportOrders: (eventId: number, format: "csv" | "xlsx") =>
-    `${config().restUrl}eventos/v1/events/${eventId}/orders/export?format=${format}&_wpnonce=${config().nonce}`,
+  exportOrders: (eventId: number, format: "csv" = "csv") =>
+    `${config().restUrl}exports/event_orders/${format}?event_id=${eventId}&_wpnonce=${config().nonce}`,
 
   // ── Guests ────────────────────────────────────────────────────────────
   eventGuests: (eventId: number, params: GuestListParams) =>
@@ -926,7 +926,7 @@ export const eventsApi = {
   // ── Reports ───────────────────────────────────────────────────────────
   eventReport: (eventId: number) => unwrap<EventReportPayload>(`events/${eventId}/reports`),
   exportReport: (eventId: number, format: "csv" | "pdf") =>
-    `${config().restUrl}eventos/v1/events/${eventId}/reports/export?format=${format}&_wpnonce=${config().nonce}`,
+    `${config().restUrl}exports/event_report/${format}?event_id=${eventId}&_wpnonce=${config().nonce}`,
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1413,7 +1413,7 @@ export const wcApi = {
     ),
 
   exportOrders: (params: WcListParams = {}) =>
-    `${config().restUrl}eventos/v1/woocommerce/orders/export?${new URLSearchParams(
+    `${config().restUrl}woocommerce/orders/export?${new URLSearchParams(
       Object.fromEntries(
         Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
           .map(([k, v]) => [k, String(v)])
@@ -1500,6 +1500,5 @@ export const wcApi = {
     ),
 
   // ── Log export ────────────────────────────────────────────────────────
-  exportLog: () =>
-    `${config().restUrl}eventos/v1/woocommerce/log/export?_wpnonce=${config().nonce}`,
+  exportLog: () => `${config().restUrl}woocommerce/log/export?_wpnonce=${config().nonce}`,
 };

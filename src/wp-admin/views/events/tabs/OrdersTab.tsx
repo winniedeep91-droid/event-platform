@@ -267,18 +267,11 @@ export function OrdersTab({ eventId }: Props) {
         actions={
           <div className="eos-inline">
             <a
-              href={eventsApi.exportOrders(eventId, "csv")}
+              href={eventsApi.exportOrders(eventId)}
               download
               className="eos-btn eos-btn--secondary eos-btn--md"
             >
               Export CSV
-            </a>
-            <a
-              href={eventsApi.exportOrders(eventId, "xlsx")}
-              download
-              className="eos-btn eos-btn--secondary eos-btn--md"
-            >
-              Export Excel
             </a>
           </div>
         }

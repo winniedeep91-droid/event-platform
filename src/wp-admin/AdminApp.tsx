@@ -28,6 +28,15 @@ import {
   SyncView,
 } from "./views/platform";
 import { queryParam } from "./views/events/shared";
+import {
+  ProductsView,
+  OrdersView,
+  CustomersView,
+  CouponsView,
+  WebhooksView,
+  WcDiagnosticsView,
+  SynchronisationView,
+} from "./views/woocommerce";
 
 function Nav({ view }: { view: string }) {
   const { menu } = config();
@@ -681,6 +690,22 @@ export function AdminApp({ view }: { view: string }) {
     content = <DiagnosticsView />;
   } else if (view === "platform/settings") {
     content = <OrganisationSettingsView />;
+
+    // ── WooCommerce module ────────────────────────────────────────────────
+  } else if (view === "wc-products") {
+    content = <ProductsView />;
+  } else if (view === "wc-orders") {
+    content = <OrdersView />;
+  } else if (view === "wc-customers") {
+    content = <CustomersView />;
+  } else if (view === "wc-coupons") {
+    content = <CouponsView />;
+  } else if (view === "wc-webhooks") {
+    content = <WebhooksView />;
+  } else if (view === "wc-diagnostics") {
+    content = <WcDiagnosticsView />;
+  } else if (view === "wc-sync") {
+    content = <SynchronisationView />;
 
     // ── Settings ────────────────────────────────────────────────────────────
   } else if (view === "settings/team") {

@@ -485,17 +485,9 @@ final class Ticket_Type_Repository {
 	 * @return array<string, mixed>
 	 */
 	private function hydrate( array $row ): array {
-		$capacity = null === $row['capacity'] ? null : (int) $row['capacity'];
-		$sold     = $this->sold_count( (int) $row['id'] );
-		$status   = (string) $row['status'];
-
-		if ( in_array( $status, array( 'paused', 'archived' ), true ) ) {
-			$effective_status = $status;
-		} elseif ( null !== $capacity && $sold >= $capacity ) {
-			$effective_status = 'sold_out';
-		} else {
-			$effective_status = 'active';
-		}
+		$capacity         = null === $row['capacity'] ? null : (int) $row['capacity'];
+		$sold             = $this->sold_count( (int) $row['id'] );
+		$effective_status = Ticket_Type_Status::effective( (string) $row['status'], $capacity, $sold );
 
 		return array(
 			'id'               => (int) $row['id'],

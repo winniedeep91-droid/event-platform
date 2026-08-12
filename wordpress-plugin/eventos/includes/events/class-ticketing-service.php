@@ -171,13 +171,18 @@ final class Ticketing_Service {
 			return $this->not_found( __( 'That ticket type no longer exists.', 'eventos' ) );
 		}
 
-		if ( null !== $type['capacity'] && ( (int) $type['sold'] + $quantity ) > (int) $type['capacity'] ) {
+		if ( Ticket_Type_Status::would_exceed_capacity( $type['capacity'], (int) $type['sold'], $quantity ) ) {
 			return new WP_Error(
 				'eventos_capacity_exceeded',
 				__( 'Not enough capacity remains on this ticket type.', 'eventos' ),
 				array( 'status' => 400 )
 			);
 		}
+
+		$label = trim( (string) ( $payload['label'] ?? '' ) );
+		$note  = trim( (string) ( $payload['note'] ?? '' ) );
+		$author = wp_get_current_user();
+		$author_name = $author->exists() ? $author->display_name : __( 'EventOS', 'eventos' );
 
 		$ticket_ids = array();
 
@@ -200,6 +205,14 @@ final class Ticketing_Service {
 			);
 
 			$this->tickets->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+
+			if ( '' !== $label ) {
+				$this->guests->update_tags( (int) $guest['id'], array( $label ) );
+			}
+
+			if ( '' !== $note ) {
+				$this->guests->add_note( (int) $guest['id'], $note, $author_name );
+			}
 
 			$ticket_ids[] = (int) $ticket['id'];
 		}
@@ -286,14 +299,15 @@ final class Ticketing_Service {
 			return $guest;
 		}
 
-		$ticket = $this->tickets->mark_checked_in( (int) $guest['ticket_id'], $operator_id );
+		$result = $this->tickets->mark_checked_in( (int) $guest['ticket_id'], $operator_id );
+		$ticket = $result['ticket'];
 
 		$this->checkins->log(
 			array(
 				'event_id'      => $event_id,
 				'ticket_id'     => $guest['ticket_id'],
 				'scanned_value' => (string) ( $ticket['ticket_number'] ?? '' ),
-				'outcome'       => 'admitted',
+				'outcome'       => $result['claimed'] ? 'admitted' : 'already_scanned',
 				'method'        => 'manual',
 				'operator_id'   => $operator_id,
 			)
@@ -404,13 +418,19 @@ final class Ticketing_Service {
 			return $this->scan_result( false, 'cancelled', __( 'This ticket was cancelled or refunded.', 'eventos' ), $guest_name, $type_name, $ticket['ticket_number'], null );
 		}
 
-		if ( $ticket['checked_in'] ) {
+		// The update itself is conditioned on checked_in = 0, so two
+		// near-simultaneous scans of the same ticket can never both admit —
+		// only one request observes claimed => true.
+		$result = $this->tickets->mark_checked_in( (int) $ticket['id'], $operator_id );
+
+		if ( ! $result['claimed'] ) {
+			$current = $result['ticket'] ?? $ticket;
+
 			$this->log_scan( $event_id, $ticket, $code, 'already_scanned', $method, $operator_id );
 
-			return $this->scan_result( false, 'already_scanned', __( 'This ticket has already been scanned.', 'eventos' ), $guest_name, $type_name, $ticket['ticket_number'], $ticket['checked_in_at'] );
+			return $this->scan_result( false, 'already_scanned', __( 'This ticket has already been scanned.', 'eventos' ), $guest_name, $type_name, $ticket['ticket_number'], $current['checked_in_at'] ?? null );
 		}
 
-		$this->tickets->mark_checked_in( (int) $ticket['id'], $operator_id );
 		$this->log_scan( $event_id, $ticket, $code, 'admitted', $method, $operator_id );
 
 		return $this->scan_result( true, 'admitted', __( 'Admitted.', 'eventos' ), $guest_name, $type_name, $ticket['ticket_number'], null );

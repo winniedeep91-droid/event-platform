@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Events;
 
 use WC_Order;
+use WC_Order_Refund;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -64,11 +65,19 @@ final class Ticket_Fulfillment {
 	 */
 	public function bootstrap(): void {
 		add_action( 'woocommerce_order_status_changed', array( $this, 'handle_status_changed' ), 20, 3 );
-		add_action( 'woocommerce_order_refunded', array( $this, 'handle_refunded' ), 20, 1 );
+		add_action( 'woocommerce_order_refunded', array( $this, 'handle_refunded' ), 20, 2 );
 	}
 
 	/**
 	 * React to an order status transition.
+	 *
+	 * WooCommerce only moves an order's overall status to "refunded" once the
+	 * full order total has been refunded — partial refunds leave the status
+	 * unchanged and fire {@see self::handle_refunded()} instead, which is
+	 * always fired for every refund (partial or full) and is the one place
+	 * that reads what was actually refunded. So "refunded" is deliberately
+	 * not handled here — only "cancelled"/"failed", which void the whole
+	 * order with no partial concept.
 	 *
 	 * @param int    $order_id Order ID.
 	 * @param string $from     Previous status.
@@ -80,22 +89,67 @@ final class Ticket_Fulfillment {
 
 		if ( in_array( $to, array( 'processing', 'completed' ), true ) ) {
 			$this->fulfil_order( (int) $order_id );
-		} elseif ( in_array( $to, array( 'cancelled', 'refunded', 'failed' ), true ) ) {
+		} elseif ( in_array( $to, array( 'cancelled', 'failed' ), true ) ) {
 			$this->tickets->cancel_for_order( (int) $order_id );
 			$this->refresh_stock_for_order( (int) $order_id );
 		}
 	}
 
 	/**
-	 * React to a refund, including partial refunds that do not change the
-	 * order's overall status.
+	 * React to a refund (partial or full) by cancelling exactly the tickets
+	 * it covers.
 	 *
-	 * @param int $order_id Order ID.
+	 * WooCommerce's own refund line items (product ID + quantity, negative
+	 * for refunds) are stable, documented public API — used here rather
+	 * than any undocumented internal linkage back to the original order
+	 * item, so this stays correct across WooCommerce versions. A refund
+	 * with no line items (a manual, non-itemized amount refund) can't be
+	 * matched to specific tickets, so it conservatively falls back to
+	 * cancelling the whole order rather than leaving refunded tickets active.
+	 *
+	 * @param int $order_id  Order ID.
+	 * @param int $refund_id Refund ID.
 	 * @return void
 	 */
-	public function handle_refunded( $order_id ): void {
-		$this->tickets->cancel_for_order( (int) $order_id );
-		$this->refresh_stock_for_order( (int) $order_id );
+	public function handle_refunded( $order_id, $refund_id ): void {
+		$order_id  = (int) $order_id;
+		$refund    = $refund_id ? wc_get_order( (int) $refund_id ) : false;
+		$cancelled = false;
+
+		if ( $refund instanceof WC_Order_Refund ) {
+			$items = $refund->get_items();
+
+			if ( ! empty( $items ) ) {
+				foreach ( $items as $refund_item ) {
+					if ( ! method_exists( $refund_item, 'get_product_id' ) ) {
+						continue;
+					}
+
+					$product_id = (int) $refund_item->get_product_id();
+					$quantity   = abs( method_exists( $refund_item, 'get_quantity' ) ? (int) $refund_item->get_quantity() : 0 );
+
+					if ( $product_id <= 0 || $quantity <= 0 ) {
+						continue;
+					}
+
+					$ticket_type_id = $this->find_ticket_type_by_product( $product_id );
+
+					if ( null === $ticket_type_id ) {
+						continue;
+					}
+
+					$this->tickets->cancel_n_for_order_type( $order_id, $ticket_type_id, $quantity );
+				}
+
+				$cancelled = true;
+			}
+		}
+
+		if ( ! $cancelled ) {
+			$this->tickets->cancel_for_order( $order_id );
+		}
+
+		$this->refresh_stock_for_order( $order_id );
 	}
 
 	/**
@@ -126,13 +180,25 @@ final class Ticket_Fulfillment {
 
 			$product_id = (int) $item->get_product_id();
 
-			if ( $product_id <= 0 || $this->tickets->exists_for_order_item( (int) $item_id ) ) {
+			if ( $product_id <= 0 ) {
 				continue;
 			}
 
 			$ticket_type_id = $this->find_ticket_type_by_product( $product_id );
 
 			if ( null === $ticket_type_id ) {
+				continue;
+			}
+
+			if ( $this->tickets->exists_for_order_item( (int) $item_id ) ) {
+				// Tickets already exist for this item. Reactivate any that a
+				// previous cancellation/refund cancelled — e.g. a failed order
+				// later reinstated to processing — instead of silently doing
+				// nothing and leaving them stuck cancelled.
+				if ( $this->tickets->reactivate_for_order_item( (int) $item_id ) > 0 ) {
+					$affected_types[ $ticket_type_id ] = true;
+				}
+
 				continue;
 			}
 

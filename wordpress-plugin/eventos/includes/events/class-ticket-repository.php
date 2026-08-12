@@ -77,9 +77,9 @@ final class Ticket_Repository {
 		);
 
 		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
-			$attempt_row                   = $row;
-			$attempt_row['ticket_number']  = self::generate_ticket_number( (int) $data['event_id'] );
-			$attempt_row['qr_token']       = self::generate_qr_token();
+			$attempt_row                  = $row;
+			$attempt_row['ticket_number'] = Ticket_Identifier::ticket_number( (int) $data['event_id'] );
+			$attempt_row['qr_token']      = Ticket_Identifier::qr_token();
 
 			$formats = array();
 
@@ -188,6 +188,32 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Reactivate tickets for an order item that were cancelled by a previous
+	 * refund/cancellation, e.g. a failed order later reinstated to processing.
+	 *
+	 * @param int $wc_order_item_id WooCommerce order item ID.
+	 * @return int Number of tickets reactivated.
+	 */
+	public function reactivate_for_order_item( int $wc_order_item_id ): int {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->update(
+			Event_Schema::tickets(),
+			array(
+				'status'     => 'active',
+				'updated_at' => current_time( 'mysql', true ),
+			),
+			array(
+				'wc_order_item_id' => $wc_order_item_id,
+				'status'           => 'cancelled',
+			),
+			array( '%s', '%s' ),
+			array( '%d', '%s' )
+		);
+	}
+
+	/**
 	 * Cancel every ticket issued for a WooCommerce order.
 	 *
 	 * Tickets that were already checked in keep their check-in record so the
@@ -216,19 +242,64 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Cancel up to a given number of active tickets for one ticket type
+	 * within one order — used to cancel exactly the tickets a partial
+	 * refund covers, oldest first.
+	 *
+	 * @param int $wc_order_id    WooCommerce order ID.
+	 * @param int $ticket_type_id Ticket type ID.
+	 * @param int $limit          Maximum number of tickets to cancel.
+	 * @return int Number of tickets actually cancelled.
+	 */
+	public function cancel_n_for_order_type( int $wc_order_id, int $ticket_type_id, int $limit ): int {
+		global $wpdb;
+
+		$table = Event_Schema::tickets();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT id FROM {$table} WHERE wc_order_id = %d AND ticket_type_id = %d AND status = 'active' ORDER BY id ASC LIMIT %d",
+				$wc_order_id,
+				$ticket_type_id,
+				max( 1, $limit )
+			)
+		);
+
+		if ( empty( $ids ) ) {
+			return 0;
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		return (int) $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'cancelled', updated_at = %s WHERE id IN ({$placeholders})",
+				array_merge( array( current_time( 'mysql', true ) ), array_map( 'intval', $ids ) )
+			)
+		);
+	}
+
+	/**
 	 * Mark a ticket as checked in.
+	 *
+	 * The update is conditioned on `checked_in = 0` so two near-simultaneous
+	 * scans of the same ticket (two doors, two devices) can never both
+	 * "win" — only the request that actually flips the flag gets
+	 * `claimed => true`; the other correctly observes it was already admitted.
 	 *
 	 * @param int $id          Ticket ID.
 	 * @param int $operator_id User performing the check-in, 0 when unknown.
-	 * @return array<string, mixed>|null
+	 * @return array{claimed: bool, ticket: array<string, mixed>|null}
 	 */
-	public function mark_checked_in( int $id, int $operator_id ): ?array {
+	public function mark_checked_in( int $id, int $operator_id ): array {
 		global $wpdb;
 
 		$now = current_time( 'mysql', true );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update(
+		$updated = $wpdb->update(
 			Event_Schema::tickets(),
 			array(
 				'checked_in'    => 1,
@@ -236,12 +307,18 @@ final class Ticket_Repository {
 				'checked_in_by' => $operator_id,
 				'updated_at'    => $now,
 			),
-			array( 'id' => $id ),
+			array(
+				'id'         => $id,
+				'checked_in' => 0,
+			),
 			array( '%d', '%s', '%d', '%s' ),
-			array( '%d' )
+			array( '%d', '%d' )
 		);
 
-		return $this->find( $id );
+		return array(
+			'claimed' => (int) $updated > 0,
+			'ticket'  => $this->find( $id ),
+		);
 	}
 
 	/**
@@ -337,25 +414,6 @@ final class Ticket_Repository {
 				$event_id
 			)
 		);
-	}
-
-	/**
-	 * A random, hard to guess ticket number.
-	 *
-	 * @param int $event_id Event ID.
-	 * @return string
-	 */
-	private static function generate_ticket_number( int $event_id ): string {
-		return sprintf( 'EVT%d-%s', $event_id, strtoupper( wp_generate_password( 8, false, false ) ) );
-	}
-
-	/**
-	 * A cryptographically random QR/check-in token.
-	 *
-	 * @return string
-	 */
-	private static function generate_qr_token(): string {
-		return bin2hex( random_bytes( 20 ) );
 	}
 
 	/**

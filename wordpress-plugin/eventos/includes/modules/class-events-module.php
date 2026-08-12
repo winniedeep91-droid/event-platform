@@ -11,6 +11,7 @@ namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
 use EventOS\Capabilities;
+use EventOS\Events\Campaign_Repository;
 use EventOS\Events\Checkin_Repository;
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Event_Controller;
@@ -19,6 +20,8 @@ use EventOS\Events\Event_Schema;
 use EventOS\Events\Event_Service;
 use EventOS\Events\Event_Status;
 use EventOS\Events\Guest_Repository;
+use EventOS\Events\Marketing_Service;
+use EventOS\Events\Promo_Link_Repository;
 use EventOS\Events\Ticket_Fulfillment;
 use EventOS\Events\Ticket_Order_Resolver;
 use EventOS\Events\Ticket_Repository;
@@ -26,6 +29,7 @@ use EventOS\Events\Ticket_Type_Repository;
 use EventOS\Events\Ticketing_Service;
 use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
+use EventOS\Rest\Marketing_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Ticketing_Controller;
 use EventOS\Search_Registry;
@@ -53,6 +57,13 @@ final class Events_Module extends Abstract_Module {
 	 * @var Ticketing_Service|null
 	 */
 	private ?Ticketing_Service $ticketing_service = null;
+
+	/**
+	 * Marketing service layer.
+	 *
+	 * @var Marketing_Service|null
+	 */
+	private ?Marketing_Service $marketing_service = null;
 
 	/**
 	 * Module slug.
@@ -125,6 +136,22 @@ final class Events_Module extends Abstract_Module {
 		}
 
 		return $this->ticketing_service;
+	}
+
+	/**
+	 * Marketing service accessor.
+	 *
+	 * @return Marketing_Service
+	 */
+	public function marketing_service(): Marketing_Service {
+		if ( null === $this->marketing_service ) {
+			$this->marketing_service = new Marketing_Service(
+				new Campaign_Repository( $this->ticketing_service()->ticket_types() ),
+				new Promo_Link_Repository()
+			);
+		}
+
+		return $this->marketing_service;
 	}
 
 	/**
@@ -294,6 +321,10 @@ final class Events_Module extends Abstract_Module {
 		$ticketing = new Ticketing_Controller( $this->ticketing_service() );
 
 		Rest_Registry::register_many( $ticketing->endpoints(), $this->slug() );
+
+		$marketing = new Marketing_Controller( $this->marketing_service() );
+
+		Rest_Registry::register_many( $marketing->endpoints(), $this->slug() );
 	}
 
 	/**

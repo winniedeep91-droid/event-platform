@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.1.0';
+	public const VERSION = '1.2.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -155,6 +155,24 @@ final class Event_Schema {
 	 */
 	public static function checkins(): string {
 		return self::table( 'checkins' );
+	}
+
+	/**
+	 * Discount campaigns table.
+	 *
+	 * @return string
+	 */
+	public static function campaigns(): string {
+		return self::table( 'campaigns' );
+	}
+
+	/**
+	 * Promotional links table.
+	 *
+	 * @return string
+	 */
+	public static function promo_links(): string {
+		return self::table( 'promo_links' );
 	}
 
 	/**
@@ -438,6 +456,48 @@ final class Event_Schema {
 			KEY ticket_id (ticket_id),
 			KEY outcome (outcome),
 			KEY scanned_at (scanned_at)
+		) {$collate};";
+
+		$campaigns = self::campaigns();
+
+		$schema[] = "CREATE TABLE {$campaigns} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			wc_coupon_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			name VARCHAR(191) NOT NULL,
+			code VARCHAR(60) NOT NULL,
+			type VARCHAR(20) NOT NULL DEFAULT 'percent',
+			value DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+			status VARCHAR(20) NOT NULL DEFAULT 'draft',
+			applies_to VARCHAR(20) NOT NULL DEFAULT 'all',
+			ticket_type_ids TEXT NULL,
+			min_spend DECIMAL(12,2) NULL,
+			max_uses INT UNSIGNED NULL,
+			expires_at DATETIME NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY code (code),
+			KEY event_id (event_id),
+			KEY wc_coupon_id (wc_coupon_id),
+			KEY status (status)
+		) {$collate};";
+
+		$promo_links = self::promo_links();
+
+		$schema[] = "CREATE TABLE {$promo_links} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			label VARCHAR(191) NOT NULL,
+			url TEXT NOT NULL,
+			utm_source VARCHAR(191) NOT NULL DEFAULT '',
+			utm_medium VARCHAR(191) NOT NULL DEFAULT '',
+			utm_campaign VARCHAR(191) NOT NULL DEFAULT '',
+			clicks INT UNSIGNED NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			KEY event_id (event_id)
 		) {$collate};";
 
 		foreach ( $schema as $statement ) {

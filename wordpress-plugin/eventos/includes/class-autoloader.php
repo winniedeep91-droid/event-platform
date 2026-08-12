@@ -44,7 +44,7 @@ final class Autoloader {
 		$prefix   = 'interface-';
 
 		if ( 0 === substr_compare( $short, 'Interface', -9 ) ) {
-			$short = substr( $short, 0, -9 );
+			$short = rtrim( substr( $short, 0, -9 ), '_' );
 		} else {
 			$prefix = 'class-';
 		}

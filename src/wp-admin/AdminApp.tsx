@@ -645,9 +645,9 @@ export function AdminApp({ view }: { view: string }) {
   let content = <Dashboard />;
 
   // ── Events module ──────────────────────────────────────────────────────
-  if (view === "eventos-events") {
+  if (view === "events/dashboard") {
     content = <EventsDashboardView />;
-  } else if (view === "eventos-events-list") {
+  } else if (view === "events/list") {
     const action = queryParam("action");
     const eventParam = queryParam("event");
 
@@ -662,13 +662,13 @@ export function AdminApp({ view }: { view: string }) {
       // Filterable list
       content = <EventsListView />;
     }
-  } else if (view === "eventos-events-calendar") {
+  } else if (view === "events/calendar") {
     content = <EventsCalendarView />;
-  } else if (view === "eventos-venues") {
+  } else if (view === "events/venues") {
     content = <VenuesView />;
-  } else if (view === "eventos-artists") {
+  } else if (view === "events/artists") {
     content = <ArtistsView />;
-  } else if (view === "eventos-event-terms") {
+  } else if (view === "events/terms") {
     // taxonomy=category or taxonomy=tag — validated against the union type
     const rawTaxonomy = queryParam("taxonomy");
     const taxonomy: EventTaxonomy =

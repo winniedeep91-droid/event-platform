@@ -31,6 +31,12 @@ final class Capabilities {
 	public const USER_META_KEY = 'eventos_roles';
 
 	/**
+	 * Option storing a hash of the capability set last synced to the
+	 * WordPress administrator role.
+	 */
+	private const SYNCED_HASH_OPTION = 'eventos_synced_capabilities_hash';
+
+	/**
 	 * Capability required to manage EventOS configuration.
 	 */
 	public const MANAGE_SETTINGS = 'eventos_manage_settings';
@@ -101,6 +107,35 @@ final class Capabilities {
 		foreach ( array_keys( self::all_capabilities() ) as $capability ) {
 			$admin->add_cap( $capability );
 		}
+	}
+
+	/**
+	 * Re-sync the administrator role whenever the known capability set changes.
+	 *
+	 * install_roles() only runs on activation and on schema upgrades, at which
+	 * point modules booted through Module_Registry (Events, WooCommerce, ...)
+	 * have not yet registered their own capabilities via
+	 * Permissions::register_declaration(), so module-specific capabilities such
+	 * as "eventos_view_events" never reach the real WordPress administrator
+	 * role. Hooked to `eventos_modules_booted`, which fires once every module
+	 * has registered its permissions, so the full set is known. Guarded by a
+	 * stored hash so this only writes to the role option when the set actually
+	 * changes, not on every request.
+	 *
+	 * @return void
+	 */
+	public static function maybe_sync_roles(): void {
+		$capabilities = array_keys( self::all_capabilities() );
+		sort( $capabilities );
+
+		$hash = md5( implode( ',', $capabilities ) );
+
+		if ( get_option( self::SYNCED_HASH_OPTION, '' ) === $hash ) {
+			return;
+		}
+
+		self::install_roles();
+		update_option( self::SYNCED_HASH_OPTION, $hash );
 	}
 
 	/**
@@ -183,5 +218,6 @@ final class Capabilities {
 		Permissions::bootstrap();
 
 		add_filter( 'user_has_cap', array( __CLASS__, 'filter_user_has_cap' ), 10, 4 );
+		add_action( 'eventos_modules_booted', array( __CLASS__, 'maybe_sync_roles' ) );
 	}
 }

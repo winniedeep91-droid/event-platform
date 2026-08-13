@@ -182,12 +182,11 @@
 }
 
 .eos-topbar__trail {
+  /* Stays in flow (not display:none) even with no breadcrumb, so it keeps
+     acting as the flexible spacer that pushes the user chip to the right —
+     most visibly on Dashboard, which never has a breadcrumb. */
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.eos-topbar__trail:empty {
-  display: none;
 }
 
 .eos-topbar__user {

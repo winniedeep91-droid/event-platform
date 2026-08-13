@@ -26,7 +26,9 @@ export function pageUrl(
   params: Record<string, string | number | undefined> = {},
 ): string {
   const { adminUrl } = config();
-  const base = `${adminUrl.replace(/\/+$/, "")}/admin.php`;
+  // adminUrl is already the full admin.php URL (built by admin_url('admin.php')
+  // on the PHP side) — do not append another /admin.php segment here.
+  const base = adminUrl.replace(/\/+$/, "");
   const search = new URLSearchParams({ page });
 
   Object.entries(params).forEach(([key, value]) => {

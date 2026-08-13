@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace EventOS\Modules;
 
+use EventOS\Abstract_Module;
 use EventOS\Capabilities;
 use EventOS\Cron;
 use EventOS\Export\Export_Registry;
@@ -25,7 +26,6 @@ use EventOS\Rest\Export_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Search_Registry;
 use EventOS\Invitations;
-use EventOS\Module_Interface;
 use EventOS\Rest\Dashboard_Controller;
 use EventOS\Rest\Invitations_Controller;
 use EventOS\Rest\Settings_Controller;
@@ -41,7 +41,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Bootstraps configuration, roles, invitations and the REST surface.
  */
-final class Core_Module implements Module_Interface {
+final class Core_Module extends Abstract_Module {
 
 	/**
 	 * Module slug.

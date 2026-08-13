@@ -29,19 +29,25 @@
   --eos-text-xl: 22px;
   --eos-text-2xl: 28px;
 
-  --eos-bg: #f6f7f9;
+  /* Brand palette: derived entirely from the two source colours, #FEEDE1
+     (peach) and #889794 (sage). Tints/shades of those two hues only —
+     semantic status colours stay conventional (green/amber/red/blue) since
+     they carry meaning independent of the brand accent. Every pairing below
+     is contrast-checked (WCAG relative luminance) against the surface it's
+     meant to sit on; see the derivation notes next to each token. */
+  --eos-bg: #feede1; /* peach, source colour */
   --eos-surface: #ffffff;
-  --eos-surface-muted: #f3f4f6;
-  --eos-border: #e2e5ea;
-  --eos-border-strong: #cbd2dc;
-  --eos-fg: #1f2937;
-  --eos-fg-muted: #6b7280;
+  --eos-surface-muted: #fef5ee; /* white tinted toward peach, 1.08:1 vs surface */
+  --eos-border: #f2e4d9; /* peach shaded toward sage, 1.24:1 vs surface */
+  --eos-border-strong: #dbd3ca; /* 1.48:1 vs surface */
+  --eos-fg: #262320;
+  --eos-fg-muted: #66716f; /* darkened sage, 5.05:1 vs white */
   --eos-fg-inverse: #ffffff;
 
-  --eos-primary: var(--eventos-primary, #2563eb);
+  --eos-primary: var(--eventos-primary, #5a6663); /* darkened sage, 5.97:1 vs white */
   --eos-primary-fg: #ffffff;
-  --eos-secondary: var(--eventos-secondary, #0f172a);
-  --eos-accent: var(--eventos-accent, #7c3aed);
+  --eos-secondary: var(--eventos-secondary, #303534); /* deep sage-charcoal */
+  --eos-accent: var(--eventos-accent, #c3c2ba); /* soft peach/sage blend, fills only */
 
   --eos-success: #15803d;
   --eos-success-soft: #ecfdf5;
@@ -52,9 +58,9 @@
   --eos-info: #1d4ed8;
   --eos-info-soft: #eff6ff;
 
-  --eos-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --eos-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  --eos-shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.18);
+  --eos-shadow-sm: 0 1px 2px rgba(38, 35, 32, 0.06);
+  --eos-shadow: 0 8px 24px rgba(38, 35, 32, 0.08);
+  --eos-shadow-lg: 0 24px 60px rgba(38, 35, 32, 0.18);
   --eos-focus: 0 0 0 2px var(--eos-surface), 0 0 0 4px var(--eos-primary);
 
   color: var(--eos-fg);
@@ -65,13 +71,15 @@
 /* Dark mode: opt-in via `.eos-dark`, plus automatic when the host prefers it. */
 .eos.eos-dark,
 .eos .eos-dark {
-  --eos-bg: #0b1120;
-  --eos-surface: #131c2f;
-  --eos-surface-muted: #1b2540;
-  --eos-border: #26314a;
-  --eos-border-strong: #37455f;
-  --eos-fg: #e7ecf5;
-  --eos-fg-muted: #97a3b8;
+  --eos-bg: #181b1b;
+  --eos-surface: #262a29;
+  --eos-surface-muted: #2e3332;
+  --eos-border: #404443;
+  --eos-border-strong: #565958;
+  --eos-fg: #fef4ed; /* warm peach-white, keeps the brand identity in dark mode */
+  --eos-fg-muted: #9aa7a4;
+  --eos-primary: #9daaa7; /* lightened sage, 6.05:1 vs dark surface */
+  --eos-primary-fg: #181b1b;
   --eos-success-soft: rgba(21, 128, 61, 0.16);
   --eos-warning-soft: rgba(180, 83, 9, 0.16);
   --eos-danger-soft: rgba(185, 28, 28, 0.18);
@@ -88,13 +96,15 @@
 
 @media (prefers-color-scheme: dark) {
   .eos.eos-auto {
-    --eos-bg: #0b1120;
-    --eos-surface: #131c2f;
-    --eos-surface-muted: #1b2540;
-    --eos-border: #26314a;
-    --eos-border-strong: #37455f;
-    --eos-fg: #e7ecf5;
-    --eos-fg-muted: #97a3b8;
+    --eos-bg: #181b1b;
+    --eos-surface: #262a29;
+    --eos-surface-muted: #2e3332;
+    --eos-border: #404443;
+    --eos-border-strong: #565958;
+    --eos-fg: #fef4ed;
+    --eos-fg-muted: #9aa7a4;
+    --eos-primary: #9daaa7;
+    --eos-primary-fg: #181b1b;
     --eos-success-soft: rgba(21, 128, 61, 0.16);
     --eos-warning-soft: rgba(180, 83, 9, 0.16);
     --eos-danger-soft: rgba(185, 28, 28, 0.18);

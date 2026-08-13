@@ -18,10 +18,10 @@ import {
 } from "../../ui";
 import { SettingsForm, type SettingsValues } from "./settings-form";
 
-export function OrganisationSettingsView() {
+export function OrganisationSettingsView({ initialGroup }: { initialGroup?: string } = {}) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [active, setActive] = useState("");
+  const [active, setActive] = useState(initialGroup ?? "");
 
   const settings = useQuery({ queryKey: ["eventos", "settings"], queryFn: api.settings });
 

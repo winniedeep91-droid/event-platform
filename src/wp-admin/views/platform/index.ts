@@ -8,4 +8,5 @@ export { SyncView } from "./sync";
 export { DiagnosticsView } from "./diagnostics";
 export { BrandingView } from "./branding";
 export { OrganisationSettingsView } from "./settings";
+export { TeamView } from "./team";
 export * from "./shared";

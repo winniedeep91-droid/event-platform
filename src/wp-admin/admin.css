@@ -1,241 +1,214 @@
+/**
+ * Pre-hydration chrome only. `.eventos-admin` / `.eventos-admin__loading`
+ * are rendered server-side by Admin_Menu::render() before React mounts, so
+ * they must keep working even though `--eos-*` tokens aren't guaranteed to
+ * have applied to this subtree at that exact moment — hence the plain
+ * values here instead of var(--eos-*). Everything else the app renders
+ * (the shell, the sidebar, every page) is styled by src/wp-admin/ui/ui.css.
+ */
 .eventos-admin {
-  --eventos-radius: 10px;
-  color: #1f2937;
+  color: #262320;
 }
 
 .eventos-admin__loading {
   padding: 24px 0;
-  color: #6b7280;
+  color: #66716f;
 }
 
-.eventos-app {
+/* ------------------------------------------------------------- app shell */
+
+.eos-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 640px;
+  margin: 0 -20px;
+  background: var(--eos-bg);
+}
+
+.eos-shell__sidebar {
+  flex: 0 0 240px;
+  align-self: stretch;
+  border-right: 1px solid var(--eos-border);
+}
+
+.eos-shell__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.eos-shell__content {
   max-width: 1180px;
+  padding: var(--eos-space-6) var(--eos-space-8) var(--eos-space-8);
 }
 
-.eventos-app__header {
+@media (max-width: 900px) {
+  .eos-shell {
+    margin: 0;
+  }
+
+  .eos-shell__sidebar {
+    display: none;
+  }
+
+  .eos-shell__content {
+    padding: var(--eos-space-4);
+  }
+}
+
+@media (min-width: 901px) {
+  .eos-topbar__menu-toggle {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------- sidebar */
+
+.eos-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 640px;
+}
+
+.eos-sidebar__brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin: 8px 0 20px;
+  gap: var(--eos-space-2);
+  padding: var(--eos-space-5) var(--eos-space-5) var(--eos-space-4);
+  font-weight: 700;
+  font-size: var(--eos-text-lg);
+  letter-spacing: -0.01em;
+  color: var(--eos-fg);
 }
 
-.eventos-app__title {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.eventos-app__subtitle {
-  margin: 4px 0 0;
-  color: #6b7280;
-}
-
-.eventos-app__brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.eventos-app__brand img {
-  max-height: 40px;
+.eos-sidebar__brand img {
+  max-height: 24px;
   width: auto;
 }
 
-.eventos-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
+.eos-sidebar__scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 var(--eos-space-3) var(--eos-space-5);
 }
 
-.eventos-nav a {
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: #fff;
-  border: 1px solid #dcdcde;
-  text-decoration: none;
-  color: #374151;
-  font-weight: 500;
-}
-
-.eventos-nav a[aria-current="page"] {
-  background: var(--eventos-accent, #2563eb);
-  border-color: var(--eventos-accent, #2563eb);
-  color: #fff;
-}
-
-.eventos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-}
-
-.eventos-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: var(--eventos-radius);
-  padding: 18px;
-}
-
-.eventos-card__title {
-  margin: 0 0 12px;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #6b7280;
-}
-
-.eventos-card__metric {
-  font-size: 24px;
+.eos-sidebar__top-link {
+  display: block;
+  margin: 0 var(--eos-space-2) var(--eos-space-4);
+  padding: var(--eos-space-2) var(--eos-space-3);
+  border-radius: var(--eos-radius-sm);
   font-weight: 600;
+  font-size: var(--eos-text-md);
+  color: var(--eos-fg);
+  text-decoration: none;
 }
 
-.eventos-list {
+.eos-sidebar__top-link:hover {
+  background: var(--eos-surface-muted);
+}
+
+.eos-sidebar__top-link[aria-current="page"] {
+  background: var(--eos-accent);
+  color: var(--eos-fg);
+}
+
+.eos-sidebar__divider {
+  height: 1px;
+  margin: var(--eos-space-3) var(--eos-space-2) var(--eos-space-4);
+  background: var(--eos-border);
+}
+
+.eos-sidebar__group {
+  margin-bottom: var(--eos-space-5);
+}
+
+.eos-sidebar__group-label {
+  margin: 0 0 var(--eos-space-1);
+  padding: 0 var(--eos-space-3);
+  font-size: var(--eos-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eos-fg-muted);
+}
+
+.eos-sidebar__group[data-tier="secondary"] .eos-sidebar__group-label {
+  opacity: 0.85;
+}
+
+.eos-sidebar__group ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.eventos-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid #f1f5f9;
+.eos-sidebar__group a {
+  display: block;
+  margin: 1px var(--eos-space-2);
+  padding: var(--eos-space-2) var(--eos-space-3);
+  border-radius: var(--eos-radius-sm);
+  font-size: var(--eos-text-base);
+  color: var(--eos-fg);
+  text-decoration: none;
 }
 
-.eventos-list li:last-child {
-  border-bottom: 0;
+.eos-sidebar__group a:hover {
+  background: var(--eos-surface-muted);
 }
 
-.eventos-status {
+.eos-sidebar__group a[aria-current="page"] {
+  background: var(--eos-surface);
+  box-shadow: inset 2px 0 0 var(--eos-primary);
+  color: var(--eos-primary);
   font-weight: 600;
 }
 
-.eventos-status--ok {
-  color: #15803d;
-}
+/* ----------------------------------------------------------------- topbar */
 
-.eventos-status--fail {
-  color: #b91c1c;
-}
-
-.eventos-form {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: var(--eventos-radius);
-  padding: 20px;
-  max-width: 760px;
-}
-
-.eventos-field {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.eventos-field label {
-  font-weight: 600;
-}
-
-.eventos-field input[type="text"],
-.eventos-field input[type="email"],
-.eventos-field input[type="url"],
-.eventos-field input[type="number"],
-.eventos-field select {
-  max-width: 420px;
-}
-
-.eventos-field__media {
+.eos-topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--eos-space-3);
+  padding: var(--eos-space-3) var(--eos-space-8);
+  border-bottom: 1px solid var(--eos-border);
+  background: var(--eos-surface);
 }
 
-.eventos-field__media img {
-  max-height: 48px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #f9fafb;
-}
-
-.eventos-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.eventos-notice {
-  margin: 12px 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-}
-
-.eventos-notice--error {
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-.eventos-notice--success {
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-.eventos-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: var(--eventos-radius);
-  overflow: hidden;
-}
-
-.eventos-table th,
-.eventos-table td {
-  text-align: left;
-  padding: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: top;
-}
-
-.eventos-roles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.eventos-roles label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.eventos-empty {
-  padding: 28px;
-  text-align: center;
-  color: #6b7280;
-  background: #fff;
-  border: 1px dashed #d1d5db;
-  border-radius: var(--eventos-radius);
-}
-
-@media (max-width: 782px) {
-  .eventos-table,
-  .eventos-table tbody,
-  .eventos-table tr,
-  .eventos-table td {
-    display: block;
-    width: 100%;
+@media (max-width: 900px) {
+  .eos-topbar {
+    padding: var(--eos-space-3) var(--eos-space-4);
   }
+}
 
-  .eventos-table thead {
+.eos-topbar__trail {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.eos-topbar__trail:empty {
+  display: none;
+}
+
+.eos-topbar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--eos-space-2);
+  flex: 0 0 auto;
+}
+
+.eos-topbar__user-name {
+  font-size: var(--eos-text-sm);
+  color: var(--eos-fg-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .eos-topbar__user-name {
     display: none;
   }
+}
 
-  .eventos-table tr {
-    border-bottom: 1px solid #e5e7eb;
-  }
+.eos-shell__sidebar-drawer .eos-sidebar {
+  min-height: 0;
 }

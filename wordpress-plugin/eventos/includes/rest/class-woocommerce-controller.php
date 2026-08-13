@@ -434,6 +434,22 @@ final class Woocommerce_Controller {
 	}
 
 	/**
+	 * Queue the coupons sync target.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function sync_coupons(): array {
+		self::require_active();
+
+		$job_id = Sync_Registry::queue( Wc_Sync::TARGETS['coupons'] );
+
+		return array(
+			'queued' => $job_id > 0,
+			'job_id' => (string) $job_id,
+		);
+	}
+
+	/**
 	 * Customer segment counts.
 	 *
 	 * @return array<string, mixed>

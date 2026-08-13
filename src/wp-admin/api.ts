@@ -1467,6 +1467,11 @@ export const wcApi = {
       method: "DELETE",
     }),
 
+  syncCoupons: () =>
+    unwrap<{ queued: boolean; job_id: string }>("woocommerce/coupons/sync", {
+      method: "POST",
+    }),
+
   // ── Sync status ───────────────────────────────────────────────────────
   syncStatus: () =>
     unwrap<WcSyncStatus>("woocommerce/sync/status"),

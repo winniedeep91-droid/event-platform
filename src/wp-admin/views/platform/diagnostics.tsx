@@ -190,8 +190,16 @@ export function DiagnosticsView() {
         {data ? (
           <>
             <Alert
-              tone={data.healthy ? "success" : "danger"}
-              title={data.healthy ? "All checks passing" : "Attention required"}
+              tone={
+                data.summary.fail > 0 ? "danger" : data.summary.warn > 0 ? "warning" : "success"
+              }
+              title={
+                data.summary.fail > 0
+                  ? "Attention required"
+                  : data.summary.warn > 0
+                    ? "Passing with warnings"
+                    : "All checks passing"
+              }
             >
               Report generated {formatDateTime(data.generated_at)}.
             </Alert>

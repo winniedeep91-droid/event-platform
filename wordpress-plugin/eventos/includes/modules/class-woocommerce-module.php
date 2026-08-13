@@ -110,13 +110,13 @@ final class Woocommerce_Module extends Abstract_Module {
 			),
 			array(
 				'slug'       => 'wc-diagnostics',
-				'title'      => __( 'Diagnostics', 'eventos' ),
+				'title'      => __( 'WooCommerce Diagnostics', 'eventos' ),
 				'view'       => 'wc-diagnostics',
 				'capability' => Capabilities::MANAGE_SETTINGS,
 			),
 			array(
 				'slug'       => 'wc-sync',
-				'title'      => __( 'Synchronisation', 'eventos' ),
+				'title'      => __( 'WooCommerce Synchronisation', 'eventos' ),
 				'view'       => 'wc-sync',
 				'capability' => Capabilities::MANAGE_SETTINGS,
 			),
@@ -350,6 +350,14 @@ final class Woocommerce_Module extends Abstract_Module {
 					'callback'   => array( Woocommerce_Controller::class, 'coupon' ),
 					'capability' => $view,
 					'summary'    => __( 'A single WooCommerce coupon.', 'eventos' ),
+				),
+				array(
+					'route'      => '/woocommerce/coupons/sync',
+					'methods'    => 'POST',
+					'callback'   => array( Woocommerce_Controller::class, 'sync_coupons' ),
+					'capability' => $manage,
+					'log_action' => 'wc_coupons_sync_queued',
+					'summary'    => __( 'Queue a coupon synchronisation.', 'eventos' ),
 				),
 				array(
 					'route'      => '/woocommerce/coupons/(?P<id>\d+)/assign',

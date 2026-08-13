@@ -196,8 +196,7 @@ export function SynchronisationView() {
       onError: (err: unknown) => toast.error(wcErrorMessage(err), "Customers sync failed"),
     }),
     coupons: useMutation({
-      mutationFn: () =>
-        wcApi.coupons({ per_page: 1 }).then(() => ({ queued: true as const, job_id: "" })),
+      mutationFn: () => wcApi.syncCoupons(),
       onSuccess: () => {
         toast.success("Coupon sync queued.", "Coupons");
         void qc.invalidateQueries({ queryKey: ["wc", "sync", "status"] });

@@ -21,6 +21,7 @@ use EventOS\Import\Providers\Howler_Provider;
 use EventOS\Import\Providers\Quicket_Provider;
 use EventOS\Import\Providers\Webtickets_Provider;
 use EventOS\Import\Providers\WooCommerce_Provider;
+use EventOS\Job_Queue;
 use EventOS\Rest\Docs_Controller;
 use EventOS\Rest\Export_Controller;
 use EventOS\Rest\Rest_Registry;
@@ -71,6 +72,7 @@ final class Core_Module extends Abstract_Module {
 		Security::init();
 		Invitations::init();
 		Cron::init();
+		Job_Queue::init();
 		Import_Engine::init();
 		Rest_Registry::init();
 		Export_Registry::bootstrap();

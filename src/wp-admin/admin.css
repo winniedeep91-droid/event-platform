@@ -15,6 +15,32 @@
   color: #66716f;
 }
 
+/* ------------------------------------------------------- native WP chrome */
+
+/*
+ * This stylesheet is only ever enqueued on EventOS's own admin pages (see
+ * the capability/slug gate in Admin_Assets::enqueue()) — WordPress's native
+ * sidebar never receives these rules on any other wp-admin screen, so there
+ * is nothing here to undo when the user leaves EventOS. The admin bar
+ * (#wpadminbar) is deliberately left untouched.
+ */
+#adminmenumain,
+#adminmenuback,
+#adminmenuwrap {
+  display: none !important;
+}
+
+#wpcontent,
+#wpfooter {
+  margin-left: 0 !important;
+}
+
+body.rtl #wpcontent,
+body.rtl #wpfooter {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
 /* ------------------------------------------------------------- app shell */
 
 .eos-shell {

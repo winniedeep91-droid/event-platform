@@ -85,7 +85,14 @@ final class Woocommerce_Module extends Abstract_Module {
 				'capability' => Capabilities::VIEW_DASHBOARD,
 			),
 			array(
-				'slug'       => 'wc-orders',
+				// Deliberately not "wc-orders": WooCommerce's own HPOS Orders
+				// screen (Automattic\WooCommerce\Internal\Admin\Orders\PageController)
+				// already registers a native admin page at that exact slug
+				// under the WooCommerce top-level menu. Reusing it collided
+				// with WooCommerce's own page, so admin.php?page=wc-orders
+				// rendered WooCommerce's native Orders screen — with its own
+				// sidebar highlighted — instead of this module's page.
+				'slug'       => 'eventos-orders',
 				'title'      => __( 'Orders', 'eventos' ),
 				'view'       => 'wc-orders',
 				'capability' => Capabilities::VIEW_DASHBOARD,

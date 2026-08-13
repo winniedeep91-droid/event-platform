@@ -52,7 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "sales",
     label: "Sales",
     items: [
-      { slug: "wc-orders", label: "Orders" },
+      { slug: "eventos-orders", label: "Orders" },
       { slug: "wc-products", label: "Products" },
       { slug: "wc-customers", label: "Customers" },
       { slug: "wc-coupons", label: "Coupons" },

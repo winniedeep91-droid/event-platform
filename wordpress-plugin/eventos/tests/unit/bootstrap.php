@@ -25,3 +25,4 @@ $eventos_plugin_dir = dirname( __DIR__, 2 );
 require_once $eventos_plugin_dir . '/includes/events/class-ticket-identifier.php';
 require_once $eventos_plugin_dir . '/includes/events/class-ticket-type-status.php';
 require_once $eventos_plugin_dir . '/includes/events/class-campaign-status.php';
+require_once $eventos_plugin_dir . '/includes/crm/class-identity-normalizer.php';

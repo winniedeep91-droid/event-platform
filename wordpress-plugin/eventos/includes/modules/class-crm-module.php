@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
+use EventOS\Crm\Person_Backfill_Service;
 use EventOS\Crm\Person_Schema;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -91,9 +92,20 @@ final class Crm_Module extends Abstract_Module {
 	/**
 	 * Register runtime hooks.
 	 *
+	 * Person_Backfill_Service::init() is called directly rather than via
+	 * the `eventos_register_jobs` hook — by the time this module's init()
+	 * runs, Core_Module has already booted (and with it, Job_Queue::init(),
+	 * which is what fires that hook), so attaching to it here would
+	 * silently never register the handler. See
+	 * Person_Backfill_Service's class docblock for the full explanation,
+	 * and Import_Engine::init() (called the same direct way from
+	 * Core_Module::init()) for the existing precedent.
+	 *
 	 * @return void
 	 */
 	public function init(): void {
 		Person_Schema::maybe_install();
+
+		Person_Backfill_Service::init();
 	}
 }

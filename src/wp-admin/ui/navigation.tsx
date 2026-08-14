@@ -83,7 +83,7 @@ export function Tabs({ items, value, defaultValue, onChange, label, className, s
 
   return (
     <div className={cx("eos-stack", className)} style={style}>
-      <div className="eos-tabs" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+      <div className="eos-tabs__list" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
         {items.map((item) => (
           <button
             key={item.id}
@@ -162,7 +162,10 @@ export function Accordion({
                 <span>{item.title}</span>
                 <span className="eos-inline">
                   {item.meta}
-                  <span className={cx("eos-accordion__chevron", isOpen && "is-open")} aria-hidden="true">
+                  <span
+                    className={cx("eos-accordion__chevron", isOpen && "is-open")}
+                    aria-hidden="true"
+                  >
                     ›
                   </span>
                 </span>
@@ -200,14 +203,25 @@ export interface StepperProps extends StyleProps {
 }
 
 /** Progress indicator for multi-step flows. */
-export function Stepper({ steps, current, onStepChange, label = "Progress", className, style }: StepperProps) {
+export function Stepper({
+  steps,
+  current,
+  onStepChange,
+  label = "Progress",
+  className,
+  style,
+}: StepperProps) {
   return (
     <ol className={cx("eos-stepper", className)} style={style} aria-label={label}>
       {steps.map((step, index) => {
         const state = index < current ? "is-complete" : index === current ? "is-current" : "";
         const interactive = Boolean(onStepChange) && index <= current;
         return (
-          <li className={cx("eos-stepper__step", state)} key={step.id} aria-current={index === current ? "step" : undefined}>
+          <li
+            className={cx("eos-stepper__step", state)}
+            key={step.id}
+            aria-current={index === current ? "step" : undefined}
+          >
             <span className="eos-stepper__marker" aria-hidden="true">
               {index < current ? "✓" : index + 1}
             </span>
@@ -224,7 +238,9 @@ export function Stepper({ steps, current, onStepChange, label = "Progress", clas
               ) : (
                 <span className="eos-stepper__title">{step.title}</span>
               )}
-              {step.description ? <span className="eos-stepper__description">{step.description}</span> : null}
+              {step.description ? (
+                <span className="eos-stepper__description">{step.description}</span>
+              ) : null}
             </span>
           </li>
         );
@@ -262,7 +278,11 @@ export function Wizard({
       <Stepper steps={steps} current={current} onStepChange={onStepChange} />
       <div>{steps[current]?.content}</div>
       <div className="eos-inline" style={{ justifyContent: "flex-end" }}>
-        <Button variant="ghost" disabled={current === 0 || busy} onClick={() => onStepChange(current - 1)}>
+        <Button
+          variant="ghost"
+          disabled={current === 0 || busy}
+          onClick={() => onStepChange(current - 1)}
+        >
           Back
         </Button>
         <Button

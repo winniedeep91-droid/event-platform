@@ -322,7 +322,7 @@ export function CustomersView() {
                 emptyDescription={
                   search || segment
                     ? "Try adjusting your filters."
-                    : "Customers will appear here after the first sync."
+                    : "Customers who register or check out in WooCommerce will appear here automatically."
                 }
               />
               {totalPages > 1 && (

@@ -20,12 +20,7 @@ import {
   type FilterDefinition,
   type SelectOption,
 } from "../../ui";
-import {
-  wcApi,
-  eventsApi,
-  type WcProductRecord,
-  type WcProductStatus,
-} from "../../api";
+import { wcApi, eventsApi, type WcProductRecord, type WcProductStatus } from "../../api";
 import { fmtMoney, fmtDate, wcErrorMessage, wcProductStatusTone } from "./shared";
 
 const STATUS_FILTER: FilterDefinition = {
@@ -48,13 +43,7 @@ const MAPPED_FILTER: FilterDefinition = {
   ],
 };
 
-function MappingModal({
-  product,
-  onClose,
-}: {
-  product: WcProductRecord;
-  onClose: () => void;
-}) {
+function MappingModal({ product, onClose }: { product: WcProductRecord; onClose: () => void }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [eventId, setEventId] = useState<string>(
@@ -164,22 +153,14 @@ function MappingModal({
           />
         )}
         {product.eos_synced_at && (
-          <p className="eos-page__description">
-            Last synced: {fmtDate(product.eos_synced_at)}
-          </p>
+          <p className="eos-page__description">Last synced: {fmtDate(product.eos_synced_at)}</p>
         )}
       </Stack>
     </Modal>
   );
 }
 
-function ProductDrawer({
-  product,
-  onClose,
-}: {
-  product: WcProductRecord;
-  onClose: () => void;
-}) {
+function ProductDrawer({ product, onClose }: { product: WcProductRecord; onClose: () => void }) {
   return (
     <Drawer
       open
@@ -256,7 +237,9 @@ function ProductDrawer({
           <Card title="Categories">
             <div className="eos-inline" style={{ flexWrap: "wrap" }}>
               {product.categories.map((c) => (
-                <Badge key={c.id} tone="neutral">{c.name}</Badge>
+                <Badge key={c.id} tone="neutral">
+                  {c.name}
+                </Badge>
               ))}
             </div>
           </Card>
@@ -331,9 +314,7 @@ export function ProductsView() {
       key: "status",
       header: "Status",
       cell: (row) => (
-        <Badge tone={wcProductStatusTone(row.status as WcProductStatus)}>
-          {row.status}
-        </Badge>
+        <Badge tone={wcProductStatusTone(row.status as WcProductStatus)}>{row.status}</Badge>
       ),
     },
     {
@@ -388,9 +369,7 @@ export function ProductsView() {
     {
       key: "eos_synced_at",
       header: "Last synced",
-      cell: (row) => (
-        <span className="eos-page__description">{fmtDate(row.eos_synced_at)}</span>
-      ),
+      cell: (row) => <span className="eos-page__description">{fmtDate(row.eos_synced_at)}</span>,
     },
     {
       key: "id",
@@ -425,9 +404,9 @@ export function ProductsView() {
       </Grid>
 
       <Alert tone="info" title="WooCommerce products">
-        Products are managed in WooCommerce. EventOS maps products to events and ticket
-        tiers for order tracking and guest management. Sync keeps EventOS in step with
-        WooCommerce inventory changes.
+        Products are managed in WooCommerce and always read live here, so this list is never out of
+        date. EventOS maps products to events and ticket tiers for order tracking and guest
+        management. "Sync products" just refreshes each product's last-synced timestamp.
       </Alert>
 
       <Card
@@ -479,7 +458,7 @@ export function ProductsView() {
                 emptyDescription={
                   search || status
                     ? "Try adjusting your filters."
-                    : "WooCommerce products will appear here after the first sync."
+                    : "Products created in WooCommerce will appear here automatically."
                 }
               />
               {totalPages > 1 && (

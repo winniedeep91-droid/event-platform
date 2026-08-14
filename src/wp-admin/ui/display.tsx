@@ -11,7 +11,7 @@ export interface BadgeProps extends StyleProps {
 export function Badge({ tone = "neutral", dot = false, children, className, style }: BadgeProps) {
   return (
     <span className={cx("eos-badge", `eos-badge--${tone}`, className)} style={style}>
-      {dot ? <span className="eos-badge__dot" aria-hidden="true" /> : null}
+      {dot ? <span className="eos-chip__dot" aria-hidden="true" /> : null}
       {children}
     </span>
   );
@@ -61,12 +61,20 @@ export function Avatar({ name, src, size = 36, className, style }: AvatarProps) 
 
   if (src) {
     return (
-      <img src={src} alt="" className={cx("eos-avatar", className)} style={{ ...dimension, ...style }} />
+      <img
+        src={src}
+        alt=""
+        className={cx("eos-avatar", className)}
+        style={{ ...dimension, ...style }}
+      />
     );
   }
 
   return (
-    <span className={cx("eos-avatar eos-avatar--fallback", className)} style={{ ...dimension, ...style }}>
+    <span
+      className={cx("eos-avatar eos-avatar--fallback", className)}
+      style={{ ...dimension, ...style }}
+    >
       <span aria-hidden="true">{initialsOf(name)}</span>
       <span className="eos-visually-hidden">{name}</span>
     </span>
@@ -80,7 +88,11 @@ export function AvatarGroup({
   size = 30,
   className,
   style,
-}: StyleProps & { people: Array<{ name: string; src?: string | null }>; max?: number; size?: number }) {
+}: StyleProps & {
+  people: Array<{ name: string; src?: string | null }>;
+  max?: number;
+  size?: number;
+}) {
   const visible = people.slice(0, max);
   const overflow = people.length - visible.length;
 
@@ -124,7 +136,10 @@ export function ProgressBar({
   const percent = max > 0 ? Math.max(0, Math.min(100, Math.round((value / max) * 100))) : 0;
 
   return (
-    <div className={cx("eos-progress", tone !== "primary" && `eos-progress--${tone}`, className)} style={style}>
+    <div
+      className={cx("eos-progress", tone !== "primary" && `eos-progress--${tone}`, className)}
+      style={style}
+    >
       <div className="eos-progress__meta">
         <span>{label}</span>
         {showValue && !indeterminate ? <span>{percent}%</span> : null}
@@ -160,7 +175,10 @@ export function Timeline({ items, className, style }: StyleProps & { items: Time
     <ol className={cx("eos-timeline", className)} style={style}>
       {items.map((item) => (
         <li className="eos-timeline__item" key={item.id}>
-          <span className={cx("eos-timeline__dot", item.tone && `eos-timeline__dot--${item.tone}`)} aria-hidden="true" />
+          <span
+            className={cx("eos-timeline__dot", item.tone && `eos-timeline__dot--${item.tone}`)}
+            aria-hidden="true"
+          />
           <div className="eos-timeline__content">
             <p className="eos-timeline__title">{item.title}</p>
             <time className="eos-timeline__meta" dateTime={item.timestamp}>

@@ -14,6 +14,7 @@ import {
   StatCard,
   useToast,
   type DataTableColumn,
+  type Tone,
 } from "../../../ui";
 import { eventsApi, type ScanOutcome, type ScanRecord } from "../../../api";
 import { errorMessage, formatDateTime } from "../shared";
@@ -108,19 +109,12 @@ function ManualValidation({ eventId }: { eventId: number }) {
     validate.mutate(trimmed);
   };
 
-  const resultBg =
+  const resultTone: Tone =
     lastResult?.outcome === "admitted"
-      ? "var(--eos-success-subtle)"
+      ? "success"
       : lastResult?.outcome === "already_scanned"
-        ? "var(--eos-warning-subtle)"
-        : "var(--eos-danger-subtle)";
-
-  const resultBorder =
-    lastResult?.outcome === "admitted"
-      ? "var(--eos-success-border)"
-      : lastResult?.outcome === "already_scanned"
-        ? "var(--eos-warning-border)"
-        : "var(--eos-danger-border)";
+        ? "warning"
+        : "danger";
 
   return (
     <Card title="Manual entry">
@@ -145,28 +139,9 @@ function ManualValidation({ eventId }: { eventId: number }) {
         </div>
 
         {lastResult && (
-          <div
-            style={{
-              padding: "var(--eos-space-4)",
-              borderRadius: "var(--eos-radius-md)",
-              background: resultBg,
-              border: `1px solid ${resultBorder}`,
-            }}
-          >
+          <Alert tone={resultTone} title={outcomeLabel(lastResult.outcome)}>
             <Stack>
-              <div className="eos-inline">
-                <span style={{ fontSize: 24 }}>
-                  {lastResult.outcome === "admitted"
-                    ? "✅"
-                    : lastResult.outcome === "already_scanned"
-                      ? "⚠️"
-                      : "❌"}
-                </span>
-                <div>
-                  <strong>{outcomeLabel(lastResult.outcome)}</strong>
-                  <p className="eos-page__description">{lastResult.message}</p>
-                </div>
-              </div>
+              <p className="eos-page__description">{lastResult.message}</p>
               {lastResult.valid && (
                 <Grid minColumnWidth={140}>
                   <div>
@@ -189,7 +164,7 @@ function ManualValidation({ eventId }: { eventId: number }) {
                 </p>
               )}
             </Stack>
-          </div>
+          </Alert>
         )}
       </Stack>
     </Card>

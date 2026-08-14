@@ -680,6 +680,7 @@ export interface AudienceSegment {
 // ── Report types ──────────────────────────────────────────────────────────
 
 export interface EventReportPayload {
+  currency: string;
   summary: {
     gross_revenue: number;
     net_revenue: number;
@@ -1120,7 +1121,8 @@ export const platformApi = {
     unwrap<{ cleared: boolean }>("platform/sync/history/clear", { method: "POST" }),
 
   diagnostics: () => unwrap<DiagnosticsReport>("platform/diagnostics"),
-  jobs: (params: JobListParams) => unwrapCollection<JobRecord>(`platform/jobs${query({ ...params })}`),
+  jobs: (params: JobListParams) =>
+    unwrapCollection<JobRecord>(`platform/jobs${query({ ...params })}`),
   retryJob: (id: number) =>
     unwrap<{ retried: boolean }>("platform/jobs/retry", {
       method: "POST",
@@ -1137,13 +1139,7 @@ export const platformApi = {
 
 export type WcProductStatus = "publish" | "draft" | "private" | "pending" | "trash";
 export type WcOrderStatus =
-  | "pending"
-  | "processing"
-  | "on-hold"
-  | "completed"
-  | "cancelled"
-  | "refunded"
-  | "failed";
+  "pending" | "processing" | "on-hold" | "completed" | "cancelled" | "refunded" | "failed";
 export type WcStockStatus = "instock" | "outofstock" | "onbackorder";
 export type WcCouponType = "percent" | "fixed_cart" | "fixed_product";
 export type WebhookEvent = "order.created" | "order.updated" | "order.completed" | "order.refunded";
@@ -1351,8 +1347,7 @@ export interface WcListParams {
 
 export const wcApi = {
   // ── Connection ────────────────────────────────────────────────────────
-  connectionStatus: () =>
-    unwrap<WcConnectionStatus>("woocommerce/status"),
+  connectionStatus: () => unwrap<WcConnectionStatus>("woocommerce/status"),
 
   recheckConnection: () =>
     unwrap<WcConnectionStatus>("woocommerce/status/recheck", { method: "POST" }),
@@ -1367,8 +1362,7 @@ export const wcApi = {
     return unwrapCollection<WcProductRecord>(`woocommerce/products${query(safe)}`);
   },
 
-  product: (id: number) =>
-    unwrap<WcProductRecord>(`woocommerce/products/${id}`),
+  product: (id: number) => unwrap<WcProductRecord>(`woocommerce/products/${id}`),
 
   syncProducts: (eventId?: number) =>
     unwrap<{ queued: boolean; job_id: string }>("woocommerce/products/sync", {
@@ -1397,8 +1391,7 @@ export const wcApi = {
     return unwrapCollection<WcOrderRecord>(`woocommerce/orders${query(safe)}`);
   },
 
-  order: (id: number) =>
-    unwrap<WcOrderRecord>(`woocommerce/orders/${id}`),
+  order: (id: number) => unwrap<WcOrderRecord>(`woocommerce/orders/${id}`),
 
   syncOrders: (eventId?: number) =>
     unwrap<{ queued: boolean; job_id: string }>("woocommerce/orders/sync", {
@@ -1409,15 +1402,16 @@ export const wcApi = {
   syncOrderStatus: (wcOrderId: number) =>
     unwrap<{ synced: boolean; eos_event_id: number | null }>(
       `woocommerce/orders/${wcOrderId}/sync`,
-      { method: "POST" }
+      { method: "POST" },
     ),
 
   exportOrders: (params: WcListParams = {}) =>
     `${config().restUrl}woocommerce/orders/export?${new URLSearchParams(
       Object.fromEntries(
-        Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
-          .map(([k, v]) => [k, String(v)])
-      )
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ),
     ).toString()}&_wpnonce=${config().nonce}`,
 
   // ── Customers ─────────────────────────────────────────────────────────
@@ -1430,8 +1424,7 @@ export const wcApi = {
     return unwrapCollection<WcCustomerRecord>(`woocommerce/customers${query(safe)}`);
   },
 
-  customer: (id: number) =>
-    unwrap<WcCustomerRecord>(`woocommerce/customers/${id}`),
+  customer: (id: number) => unwrap<WcCustomerRecord>(`woocommerce/customers/${id}`),
 
   syncCustomers: () =>
     unwrap<{ queued: boolean; job_id: string }>("woocommerce/customers/sync", {
@@ -1440,7 +1433,7 @@ export const wcApi = {
 
   customerSegments: () =>
     unwrap<{ segments: Array<{ id: string; label: string; count: number }> }>(
-      "woocommerce/customers/segments"
+      "woocommerce/customers/segments",
     ),
 
   // ── Coupons ───────────────────────────────────────────────────────────
@@ -1453,8 +1446,7 @@ export const wcApi = {
     return unwrapCollection<WcCouponRecord>(`woocommerce/coupons${query(safe)}`);
   },
 
-  coupon: (id: number) =>
-    unwrap<WcCouponRecord>(`woocommerce/coupons/${id}`),
+  coupon: (id: number) => unwrap<WcCouponRecord>(`woocommerce/coupons/${id}`),
 
   assignCouponToCampaign: (wcCouponId: number, campaignId: number, eventId: number) =>
     unwrap<WcCouponRecord>(`woocommerce/coupons/${wcCouponId}/assign`, {
@@ -1473,8 +1465,7 @@ export const wcApi = {
     }),
 
   // ── Sync status ───────────────────────────────────────────────────────
-  syncStatus: () =>
-    unwrap<WcSyncStatus>("woocommerce/sync/status"),
+  syncStatus: () => unwrap<WcSyncStatus>("woocommerce/sync/status"),
 
   // ── Webhooks ──────────────────────────────────────────────────────────
   webhookLog: (params: WcListParams = {}) => {
@@ -1489,20 +1480,16 @@ export const wcApi = {
   registerWebhooks: () =>
     unwrap<{ registered: WebhookEvent[]; already_registered: WebhookEvent[] }>(
       "woocommerce/webhooks/register",
-      { method: "POST" }
+      { method: "POST" },
     ),
 
   deregisterWebhooks: () =>
-    unwrap<{ deregistered: WebhookEvent[] }>(
-      "woocommerce/webhooks/register",
-      { method: "DELETE" }
-    ),
+    unwrap<{ deregistered: WebhookEvent[] }>("woocommerce/webhooks/register", { method: "DELETE" }),
 
   retryWebhook: (logId: number) =>
-    unwrap<{ retried: boolean; status: WebhookStatus }>(
-      `woocommerce/webhooks/log/${logId}/retry`,
-      { method: "POST" }
-    ),
+    unwrap<{ retried: boolean; status: WebhookStatus }>(`woocommerce/webhooks/log/${logId}/retry`, {
+      method: "POST",
+    }),
 
   // ── Log export ────────────────────────────────────────────────────────
   exportLog: () => `${config().restUrl}woocommerce/log/export?_wpnonce=${config().nonce}`,

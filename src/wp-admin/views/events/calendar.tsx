@@ -1,8 +1,18 @@
 /** Month calendar for the events programme. */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { eventsApi } from "../../api";
-import { Alert, Button, Card, LoadingState, PageLayout, Stack, StatusChip } from "../../ui";
+import { eventsApi, type EventRecord } from "../../api";
+import {
+  Alert,
+  Button,
+  Card,
+  DataTable,
+  LoadingState,
+  PageLayout,
+  Stack,
+  StatusChip,
+  type DataTableColumn,
+} from "../../ui";
 import {
   EVENTS_PAGES,
   errorMessage,
@@ -10,6 +20,7 @@ import {
   pageUrl,
   statusKind,
   statusLabel,
+  venueLabel,
 } from "./shared";
 
 function pad(value: number): string {
@@ -27,7 +38,10 @@ function monthRange(year: number, month: number): { from: string; to: string } {
 
 export function EventsCalendarView() {
   const today = new Date();
-  const [cursor, setCursor] = useState({ year: today.getUTCFullYear(), month: today.getUTCMonth() });
+  const [cursor, setCursor] = useState({
+    year: today.getUTCFullYear(),
+    month: today.getUTCMonth(),
+  });
 
   const range = monthRange(cursor.year, cursor.month);
 
@@ -35,13 +49,19 @@ export function EventsCalendarView() {
     queryKey: ["eventos", "events", "calendar", range.from, range.to],
     queryFn: () => eventsApi.calendar(range.from, range.to),
   });
-  const options = useQuery({ queryKey: ["eventos", "events", "options"], queryFn: eventsApi.options });
-
-  const monthLabel = new Date(Date.UTC(cursor.year, cursor.month, 1)).toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
+  const options = useQuery({
+    queryKey: ["eventos", "events", "options"],
+    queryFn: eventsApi.options,
   });
+
+  const monthLabel = new Date(Date.UTC(cursor.year, cursor.month, 1)).toLocaleDateString(
+    undefined,
+    {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    },
+  );
 
   const days = useMemo(() => {
     const first = new Date(Date.UTC(cursor.year, cursor.month, 1));
@@ -88,7 +108,9 @@ export function EventsCalendarView() {
       actions={
         <>
           <Button onClick={() => shift(-1)}>Previous</Button>
-          <Button onClick={() => setCursor({ year: today.getUTCFullYear(), month: today.getUTCMonth() })}>
+          <Button
+            onClick={() => setCursor({ year: today.getUTCFullYear(), month: today.getUTCMonth() })}
+          >
             Today
           </Button>
           <Button onClick={() => shift(1)}>Next</Button>
@@ -97,7 +119,9 @@ export function EventsCalendarView() {
     >
       <Stack>
         {calendar.error ? (
-          <Alert tone="danger" title="Could not load the calendar">{errorMessage(calendar.error)}</Alert>
+          <Alert tone="danger" title="Could not load the calendar">
+            {errorMessage(calendar.error)}
+          </Alert>
         ) : null}
 
         <Card title={monthLabel} flush>
@@ -110,10 +134,21 @@ export function EventsCalendarView() {
                 gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
                 gap: 1,
                 padding: 1,
+                background: "var(--eos-border)",
+                borderRadius: "var(--eos-radius-lg)",
+                overflow: "hidden",
               }}
             >
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
-                <div key={label} className="eos-page__description" style={{ padding: "8px 10px", fontWeight: 600 }}>
+                <div
+                  key={label}
+                  className="eos-page__description"
+                  style={{
+                    padding: "var(--eos-space-2) var(--eos-space-3)",
+                    fontWeight: 600,
+                    background: "var(--eos-surface-muted)",
+                  }}
+                >
                   {label}
                 </div>
               ))}
@@ -122,15 +157,16 @@ export function EventsCalendarView() {
                   key={cell.key}
                   style={{
                     minHeight: 108,
-                    padding: "8px 10px",
-                    border: "1px solid var(--eos-border, rgba(0,0,0,0.08))",
-                    borderRadius: 6,
+                    padding: "var(--eos-space-2) var(--eos-space-3)",
+                    background: "var(--eos-surface)",
                   }}
                 >
                   {cell.date ? (
-                    <>
-                      <div className="eos-page__description">{Number(cell.date.slice(8, 10))}</div>
-                      <div className="eos-stack" style={{ gap: 4, marginTop: 4 }}>
+                    <Stack style={{ gap: "var(--eos-space-1)" }}>
+                      <span className="eos-page__description">
+                        {Number(cell.date.slice(8, 10))}
+                      </span>
+                      <Stack style={{ gap: "var(--eos-space-1)" }}>
                         {(byDate.get(cell.date) ?? []).map((event) => (
                           <a
                             key={event.id}
@@ -143,8 +179,8 @@ export function EventsCalendarView() {
                             />
                           </a>
                         ))}
-                      </div>
-                    </>
+                      </Stack>
+                    </Stack>
                   ) : null}
                 </div>
               ))}
@@ -152,23 +188,52 @@ export function EventsCalendarView() {
           )}
         </Card>
 
-        <Card title="Scheduled this month">
-          {(calendar.data?.events ?? []).length ? (
-            <ul className="eos-stack" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {(calendar.data?.events ?? []).map((event) => (
-                <li key={event.id} className="eos-inline" style={{ justifyContent: "space-between" }}>
-                  <a href={pageUrl(EVENTS_PAGES.list, { event: event.id })}>{event.title}</a>
-                  <span className="eos-page__description">
-                    {formatDateTime(event.starts_at)} · {statusLabel(event.status, options.data?.statuses)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="eos-empty__description">Nothing scheduled in {monthLabel}.</p>
-          )}
+        <Card title="Scheduled this month" flush>
+          <ScheduledThisMonthTable
+            events={calendar.data?.events ?? []}
+            statuses={options.data?.statuses}
+            monthLabel={monthLabel}
+          />
         </Card>
       </Stack>
     </PageLayout>
+  );
+}
+
+function ScheduledThisMonthTable({
+  events,
+  statuses,
+  monthLabel,
+}: {
+  events: EventRecord[];
+  statuses?: Record<string, string>;
+  monthLabel: string;
+}) {
+  const columns: DataTableColumn<EventRecord>[] = [
+    {
+      key: "title",
+      header: "Event",
+      cell: (row) => <a href={pageUrl(EVENTS_PAGES.list, { event: row.id })}>{row.title}</a>,
+    },
+    { key: "starts_at", header: "Starts", cell: (row) => formatDateTime(row.starts_at) },
+    { key: "venue", header: "Venue", cell: (row) => venueLabel(row) },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => (
+        <StatusChip status={statusKind(row.status)} label={statusLabel(row.status, statuses)} />
+      ),
+    },
+  ];
+
+  return (
+    <DataTable
+      caption="Events scheduled this month"
+      columns={columns}
+      rows={events}
+      getRowId={(row) => String(row.id)}
+      emptyTitle="Nothing scheduled"
+      emptyDescription={`No events are scheduled in ${monthLabel}.`}
+    />
   );
 }

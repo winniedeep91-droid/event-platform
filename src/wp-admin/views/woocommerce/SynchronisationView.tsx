@@ -16,26 +16,31 @@ import { fmtDate, syncStatusTone, wcErrorMessage } from "./shared";
 
 type ModuleKey = "products" | "orders" | "customers" | "coupons";
 
+// Product/customer/coupon data is always read live from WooCommerce — these
+// three targets don't import or copy anything, they only confirm each record
+// is current and refresh its "last synced" timestamp. Only the orders target
+// does further work (re-resolving which EventOS event each order belongs
+// to), so its description is the one that says so.
 const MODULES: Array<{ key: ModuleKey; label: string; description: string }> = [
   {
     key: "products",
     label: "Products",
-    description: "Sync WooCommerce products to EventOS and refresh event-to-product mappings.",
+    description: "Confirm every WooCommerce product is current and refresh its last-synced time.",
   },
   {
     key: "orders",
     label: "Orders",
-    description: "Import WooCommerce orders and link them to EventOS events and guests.",
+    description: "Re-resolve which EventOS event each WooCommerce order belongs to.",
   },
   {
     key: "customers",
     label: "Customers",
-    description: "Sync WooCommerce customers to EventOS CRM and update attendance history.",
+    description: "Confirm every WooCommerce customer is current and refresh its last-synced time.",
   },
   {
     key: "coupons",
     label: "Coupons",
-    description: "Import WooCommerce coupons and link them to EventOS marketing campaigns.",
+    description: "Confirm every WooCommerce coupon is current and refresh its last-synced time.",
   },
 ];
 

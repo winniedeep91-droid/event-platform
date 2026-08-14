@@ -10,7 +10,6 @@ declare( strict_types = 1 );
 namespace EventOS;
 
 use EventOS\Admin\Asset_Manager;
-use EventOS\Admin\Menu_Registry;
 use EventOS\Rest\Rest_Registry;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -281,7 +280,6 @@ final class Module_Registry {
 		Permissions::bootstrap();
 		Permissions::register_declaration( $module->permissions() );
 		Settings::register_groups( $module->settings() );
-		Menu_Registry::register_many( $module->menu_items(), $slug );
 		Rest_Registry::register_many( $module->rest_endpoints(), $slug );
 		Asset_Manager::register_many( $module->assets(), $slug );
 

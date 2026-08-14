@@ -19,6 +19,14 @@ export interface NavLeaf {
   slug: string;
   /** Overrides the PHP-provided title when a clearer promoter-facing label exists. */
   label?: string;
+  /**
+   * Starts a new labelled cluster within the group, rendered as a small
+   * sub-heading right above this item. Used in "system" to separate
+   * platform-wide screens from their WooCommerce-specific counterparts —
+   * "Diagnostics" and "WooCommerce Diagnostics" otherwise read as one
+   * confusable flat list.
+   */
+  section?: string;
 }
 
 export interface NavGroup {
@@ -73,14 +81,14 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "system",
     label: "System",
     items: [
-      { slug: "eventos-diagnostics", label: "Diagnostics" },
-      { slug: "wc-diagnostics", label: "WooCommerce Diagnostics" },
+      { slug: "eventos-diagnostics", label: "Diagnostics", section: "Platform" },
       { slug: "eventos-sync", label: "Synchronisation" },
-      { slug: "wc-sync", label: "WooCommerce Synchronisation" },
-      { slug: "wc-webhooks", label: "Webhooks" },
       { slug: "eventos-activity", label: "Activity Log" },
       { slug: "eventos-audit", label: "Audit Trail" },
       { slug: "eventos-notifications", label: "Notifications" },
+      { slug: "wc-diagnostics", label: "Diagnostics", section: "WooCommerce" },
+      { slug: "wc-sync", label: "Synchronisation" },
+      { slug: "wc-webhooks", label: "Webhooks" },
     ],
   },
 ];
@@ -114,7 +122,17 @@ export function breadcrumbFor(view: string, menu: MenuItem[]): Crumb[] | null {
   const group = groupForSlug(item.slug);
   if (!group) return [{ label: item.title }];
 
-  const leaf = group.items.find((entry) => entry.slug === item.slug);
+  const leafIndex = group.items.findIndex((entry) => entry.slug === item.slug);
+  const leaf = group.items[leafIndex];
+  // The nearest preceding item (including this one) that opens a section.
+  const section = group.items
+    .slice(0, leafIndex + 1)
+    .reverse()
+    .find((entry) => entry.section)?.section;
 
-  return [{ label: group.label, href: undefined }, { label: leaf?.label ?? item.title }];
+  return [
+    { label: group.label, href: undefined },
+    ...(section ? [{ label: section, href: undefined }] : []),
+    { label: leaf?.label ?? item.title },
+  ];
 }

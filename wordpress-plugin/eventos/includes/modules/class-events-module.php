@@ -174,12 +174,6 @@ final class Events_Module extends Abstract_Module {
 	public function menu_items(): array {
 		return array(
 			array(
-				'slug'       => 'eventos-events',
-				'title'      => __( 'Events', 'eventos' ),
-				'view'       => 'events/dashboard',
-				'capability' => Event_Capabilities::VIEW_EVENTS,
-			),
-			array(
 				'slug'       => 'eventos-events-list',
 				'title'      => __( 'All Events', 'eventos' ),
 				'view'       => 'events/list',

@@ -9,6 +9,8 @@ declare( strict_types = 1 );
 
 namespace EventOS\Events;
 
+use EventOS\WooCommerce;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -212,6 +214,10 @@ final class Event_Report_Builder {
 		);
 
 		return array(
+			// Same store currency WooCommerce prices every order in — see
+			// EventOS\WooCommerce::currency(). Report figures are aggregated
+			// from those orders, so they share its currency.
+			'currency'               => WooCommerce::currency(),
 			'summary'                => array(
 				'gross_revenue'        => $gross,
 				'net_revenue'          => $gross - $refund_total,

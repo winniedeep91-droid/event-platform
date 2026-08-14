@@ -17,10 +17,10 @@ interface Props {
   eventId: number;
 }
 
-function fmt(amount: number) {
-  return new Intl.NumberFormat("en-ZA", {
+function fmt(amount: number, cur: string) {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "ZAR",
+    currency: cur || "USD",
     maximumFractionDigits: 0,
   }).format(amount);
 }
@@ -94,6 +94,7 @@ export function ReportsTab({ eventId }: Props) {
   if (!data) return null;
 
   const {
+    currency: cur,
     summary,
     revenue_by_day,
     revenue_by_ticket_type,
@@ -145,8 +146,8 @@ export function ReportsTab({ eventId }: Props) {
           "Unlimited"
         ),
     },
-    { key: "gross", header: "Gross revenue", cell: (row) => fmt(row.gross) },
-    { key: "net", header: "Net revenue", cell: (row) => fmt(row.net) },
+    { key: "gross", header: "Gross revenue", cell: (row) => fmt(row.gross, cur) },
+    { key: "net", header: "Net revenue", cell: (row) => fmt(row.net, cur) },
   ];
 
   const customerCols: DataTableColumn<CustomerRow>[] = [
@@ -161,20 +162,20 @@ export function ReportsTab({ eventId }: Props) {
       ),
     },
     { key: "orders", header: "Orders", cell: (row) => row.orders },
-    { key: "spend", header: "Total spend", cell: (row) => fmt(row.spend) },
+    { key: "spend", header: "Total spend", cell: (row) => fmt(row.spend, cur) },
   ];
 
   const refundCols: DataTableColumn<RefundRow>[] = [
     { key: "date", header: "Date", cell: (row) => formatDateTime(row.date) },
     { key: "count", header: "Refunds", cell: (row) => row.count },
-    { key: "amount", header: "Amount", cell: (row) => fmt(row.amount) },
+    { key: "amount", header: "Amount", cell: (row) => fmt(row.amount, cur) },
   ];
 
   const dayCols: DataTableColumn<DayRow>[] = [
     { key: "date", header: "Date", cell: (row) => formatDateTime(row.date) },
     { key: "orders", header: "Orders", cell: (row) => row.orders },
-    { key: "gross", header: "Gross", cell: (row) => fmt(row.gross) },
-    { key: "net", header: "Net", cell: (row) => fmt(row.net) },
+    { key: "gross", header: "Gross", cell: (row) => fmt(row.gross, cur) },
+    { key: "net", header: "Net", cell: (row) => fmt(row.net, cur) },
   ];
 
   return (
@@ -201,15 +202,15 @@ export function ReportsTab({ eventId }: Props) {
       <Grid minColumnWidth={160}>
         <StatCard
           label="Gross revenue"
-          value={fmt(summary.gross_revenue)}
+          value={fmt(summary.gross_revenue, cur)}
           hint={`${summary.orders} order${summary.orders !== 1 ? "s" : ""}`}
         />
         <StatCard
           label="Net revenue"
-          value={fmt(summary.net_revenue)}
-          hint={summary.refunds > 0 ? `${fmt(summary.refunds)} refunded` : "No refunds"}
+          value={fmt(summary.net_revenue, cur)}
+          hint={summary.refunds > 0 ? `${fmt(summary.refunds, cur)} refunded` : "No refunds"}
         />
-        <StatCard label="Avg. order value" value={fmt(summary.average_order_value)} />
+        <StatCard label="Avg. order value" value={fmt(summary.average_order_value, cur)} />
         <StatCard
           label="Tickets sold"
           value={summary.tickets_sold.toLocaleString()}

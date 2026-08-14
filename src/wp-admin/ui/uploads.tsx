@@ -48,10 +48,22 @@ export function MediaUploader({
   };
 
   return (
-    <Field label={label} hint={hint} error={error} labelAs="span" className={className} style={style}>
+    <Field
+      label={label}
+      hint={hint}
+      error={error}
+      labelAs="span"
+      className={className}
+      style={style}
+    >
       <div className="eos-uploader">
         {value?.url ? (
-          <img src={value.url} alt="" className="eos-uploader__preview" style={{ maxHeight: previewHeight }} />
+          <img
+            src={value.url}
+            alt=""
+            className="eos-uploader__preview"
+            style={{ maxHeight: previewHeight }}
+          />
         ) : (
           <span className="eos-uploader__placeholder" style={{ height: previewHeight }}>
             No image
@@ -125,9 +137,17 @@ export function FileUploader({
   };
 
   return (
-    <Field label={label} hint={hint} error={error ?? localError} labelAs="span" className={className} style={style}>
+    <Field
+      label={label}
+      hint={hint}
+      error={error ?? localError}
+      labelAs="span"
+      className={className}
+      style={style}
+    >
       <div
-        className={cx("eos-dropzone", dragging && "is-dragging", disabled && "is-disabled")}
+        className={cx("eos-uploader__dropzone", disabled && "is-disabled")}
+        data-dragging={dragging}
         onDragOver={(event) => {
           event.preventDefault();
           if (!disabled) setDragging(true);
@@ -139,8 +159,13 @@ export function FileUploader({
           if (!disabled) acceptFiles(event.dataTransfer.files);
         }}
       >
-        <p className="eos-dropzone__text">Drag files here or</p>
-        <Button variant="secondary" size="sm" disabled={disabled} onClick={() => inputRef.current?.click()}>
+        <p>Drag files here or</p>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+        >
           Browse files
         </Button>
         <input
@@ -154,11 +179,11 @@ export function FileUploader({
         />
       </div>
       {files.length ? (
-        <ul className="eos-file-list">
+        <ul className="eos-uploader__list">
           {files.map((file, index) => (
-            <li key={`${file.name}-${index}`}>
-              <span>{file.name}</span>
-              <span className="eos-field__hint">{formatBytes(file.size)}</span>
+            <li className="eos-uploader__file" key={`${file.name}-${index}`}>
+              <span className="eos-uploader__name">{file.name}</span>
+              <span className="eos-uploader__meta">{formatBytes(file.size)}</span>
               <Button
                 variant="ghost"
                 size="sm"

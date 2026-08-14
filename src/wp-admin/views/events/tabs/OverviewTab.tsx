@@ -22,9 +22,9 @@ interface Props {
 }
 
 function currency(amount: number, cur: string) {
-  return new Intl.NumberFormat("en-ZA", {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: cur || "ZAR",
+    currency: cur || "USD",
     maximumFractionDigits: 0,
   }).format(amount);
 }
@@ -43,7 +43,7 @@ export function OverviewTab({ event, statuses }: Props) {
   });
 
   const s = report.data?.summary;
-  const cur = "ZAR";
+  const cur = report.data?.currency || "USD";
 
   const capacityPct =
     s && s.capacity && s.capacity > 0

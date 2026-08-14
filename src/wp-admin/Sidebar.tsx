@@ -69,6 +69,9 @@ export function Sidebar({
               <ul>
                 {items.map(({ leaf, item }) => (
                   <li key={leaf.slug}>
+                    {leaf.section ? (
+                      <p className="eos-sidebar__section-label">{leaf.section}</p>
+                    ) : null}
                     <a
                       href={item.url}
                       aria-current={item.view === view ? "page" : undefined}

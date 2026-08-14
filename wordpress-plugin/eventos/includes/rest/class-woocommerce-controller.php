@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace EventOS\Rest;
 
+use EventOS\Events\Guest_Repository;
 use EventOS\Platform\Sync_Registry;
 use EventOS\WooCommerce;
 use EventOS\Woocommerce\Wc_Diagnostics;
@@ -947,6 +948,11 @@ final class Woocommerce_Controller {
 		$last       = (string) get_user_meta( $user_id, 'last_name', true );
 		$registered = $user && $user->user_registered ? gmdate( 'c', strtotime( $user->user_registered ) ) : '';
 
+		// Same cross-event query the per-event Guest tab already uses (see
+		// Guest_Repository::hydrate()) — matched here by WC customer ID or
+		// email so it also covers guest checkouts with no WP user account.
+		$attendance = ( new Guest_Repository() )->attendance_history( $user_id, $user ? (string) $user->user_email : '' );
+
 		return array(
 			'id'                     => $user_id,
 			'wc_customer_id'         => $user_id,
@@ -960,8 +966,8 @@ final class Woocommerce_Controller {
 			'total_orders'           => $stats['total_orders'],
 			'date_created'           => $registered,
 			'date_modified'          => $registered,
-			'eos_events_attended'    => 0,
-			'eos_attendance_history' => array(),
+			'eos_events_attended'    => count( array_unique( array_column( $attendance, 'event_id' ) ) ),
+			'eos_attendance_history' => $attendance,
 			'eos_segments'           => self::customer_segments_for( $stats ),
 			'eos_synced_at'          => '' !== $synced_at ? $synced_at : null,
 		);

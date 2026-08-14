@@ -10,7 +10,9 @@ import {
   Drawer,
   FilterBar,
   Grid,
+  LinkButton,
   LoadingState,
+  PageLayout,
   Pagination,
   Stack,
   StatCard,
@@ -46,14 +48,13 @@ function CustomerDrawer({
       title={`${customer.first_name} ${customer.last_name}`}
       description={customer.email}
       footer={
-        <a
+        <LinkButton
           href={`/wp-admin/user-edit.php?user_id=${customer.wc_customer_id}`}
           target="_blank"
           rel="noreferrer"
-          className="eos-btn eos-btn--secondary eos-btn--md"
         >
           Edit in WordPress ↗
-        </a>
+        </LinkButton>
       }
     >
       <Stack>
@@ -159,7 +160,7 @@ export function CustomersView() {
   const PER_PAGE = 20;
   const segment = filterValues["segment"] ?? "";
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["wc", "customers", { search, segment, page }],
     queryFn: () => wcApi.customers({ search, status: segment, page, per_page: PER_PAGE }),
     placeholderData: (prev) => prev,
@@ -252,93 +253,110 @@ export function CustomersView() {
   ];
 
   return (
-    <Stack>
-      <Grid minColumnWidth={160}>
-        <StatCard label="Total customers" value={total.toLocaleString()} />
-        <StatCard label="Segments" value={segments.length} />
-        {segments.slice(0, 2).map((s) => (
-          <StatCard key={s.id} label={s.label} value={s.count.toLocaleString()} />
-        ))}
-      </Grid>
+    <PageLayout
+      title="Customers"
+      description="Everyone who has registered or checked out through WooCommerce, with attendance and spend at a glance."
+    >
+      <Stack>
+        <Grid minColumnWidth={160}>
+          <StatCard label="Total customers" value={total.toLocaleString()} />
+          <StatCard label="Segments" value={segments.length} />
+          {segments.slice(0, 2).map((s) => (
+            <StatCard key={s.id} label={s.label} value={s.count.toLocaleString()} />
+          ))}
+        </Grid>
 
-      {segments.length > 0 && (
-        <Card title="Audience segments">
-          <DataTable
-            caption="Customer segments"
-            columns={[
-              { key: "label", header: "Segment", cell: (r) => <strong>{r.label}</strong> },
-              { key: "id", header: "ID", cell: (r) => <code>{r.id}</code> },
-              { key: "count", header: "Customers", cell: (r) => r.count.toLocaleString() },
-            ]}
-            rows={segments}
-            getRowId={(r) => r.id}
-            emptyTitle="No segments"
-          />
-        </Card>
-      )}
+        {segments.length > 0 && (
+          <Card title="Audience segments">
+            <DataTable
+              caption="Customer segments"
+              columns={[
+                { key: "label", header: "Segment", cell: (r) => <strong>{r.label}</strong> },
+                { key: "id", header: "ID", cell: (r) => <code>{r.id}</code> },
+                { key: "count", header: "Customers", cell: (r) => r.count.toLocaleString() },
+              ]}
+              rows={segments}
+              getRowId={(r) => r.id}
+              emptyTitle="No segments"
+            />
+          </Card>
+        )}
 
-      <Card
-        title={`Customers${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
-        actions={
-          <Button
-            variant="primary"
-            loading={syncMutation.isPending}
-            onClick={() => syncMutation.mutate()}
-          >
-            Sync customers
-          </Button>
-        }
-      >
-        <Stack>
-          <FilterBar
-            search={{ value: search, onChange: setSearch, placeholder: "Search by name or email…" }}
-            filters={[SEGMENT_FILTER]}
-            values={filterValues}
-            onFilterChange={(key, value) => {
-              setFilterValues((prev) => ({ ...prev, [key]: value }));
-              setPage(1);
-            }}
-            onReset={() => {
-              setFilterValues({});
-              setSearch("");
-              setPage(1);
-            }}
-          />
+        <Card
+          title={`Customers${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
+          actions={
+            <Button
+              variant="primary"
+              loading={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              Sync customers
+            </Button>
+          }
+        >
+          <Stack>
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: "Search by name or email…",
+              }}
+              filters={[SEGMENT_FILTER]}
+              values={filterValues}
+              onFilterChange={(key, value) => {
+                setFilterValues((prev) => ({ ...prev, [key]: value }));
+                setPage(1);
+              }}
+              onReset={() => {
+                setFilterValues({});
+                setSearch("");
+                setPage(1);
+              }}
+            />
 
-          {isLoading ? (
-            <LoadingState label="Loading customers…" />
-          ) : error ? (
-            <Alert tone="danger" title="Could not load customers">
-              {wcErrorMessage(error)}
-            </Alert>
-          ) : (
-            <>
-              <DataTable
-                caption="WooCommerce customers"
-                columns={columns}
-                rows={customers}
-                getRowId={(row) => String(row.id)}
-                emptyTitle="No customers found"
-                emptyDescription={
-                  search || segment
-                    ? "Try adjusting your filters."
-                    : "Customers who register or check out in WooCommerce will appear here automatically."
+            {isLoading ? (
+              <LoadingState label="Loading customers…" />
+            ) : error ? (
+              <Alert
+                tone="danger"
+                title="Could not load customers"
+                actions={
+                  <Button size="sm" onClick={() => void refetch()}>
+                    Retry
+                  </Button>
                 }
-              />
-              {totalPages > 1 && (
-                <Pagination
-                  page={page}
-                  totalPages={totalPages}
-                  total={total}
-                  onPageChange={setPage}
+              >
+                {wcErrorMessage(error)}
+              </Alert>
+            ) : (
+              <>
+                <DataTable
+                  caption="WooCommerce customers"
+                  columns={columns}
+                  rows={customers}
+                  getRowId={(row) => String(row.id)}
+                  emptyTitle="No customers found"
+                  emptyDescription={
+                    search || segment
+                      ? "Try adjusting your filters."
+                      : "Customers who register or check out in WooCommerce will appear here automatically."
+                  }
                 />
-              )}
-            </>
-          )}
-        </Stack>
-      </Card>
+                {totalPages > 1 && (
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    onPageChange={setPage}
+                  />
+                )}
+              </>
+            )}
+          </Stack>
+        </Card>
 
-      {selected && <CustomerDrawer customer={selected} onClose={() => setSelected(null)} />}
-    </Stack>
+        {selected && <CustomerDrawer customer={selected} onClose={() => setSelected(null)} />}
+      </Stack>
+    </PageLayout>
   );
 }

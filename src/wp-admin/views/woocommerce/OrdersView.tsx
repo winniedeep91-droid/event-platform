@@ -9,7 +9,9 @@ import {
   Drawer,
   FilterBar,
   Grid,
+  LinkButton,
   LoadingState,
+  PageLayout,
   Pagination,
   Stack,
   StatCard,
@@ -59,14 +61,13 @@ function OrderDrawer({ order, onClose }: { order: WcOrderRecord; onClose: () => 
       title={`Order #${order.wc_order_id}`}
       description={`${order.customer_name} · ${fmtDate(order.created_at)}`}
       footer={
-        <a
+        <LinkButton
           href={`/wp-admin/post.php?post=${order.wc_order_id}&action=edit`}
           target="_blank"
           rel="noreferrer"
-          className="eos-btn eos-btn--secondary eos-btn--md"
         >
           Edit in WooCommerce ↗
-        </a>
+        </LinkButton>
       }
     >
       <Stack>
@@ -223,7 +224,7 @@ export function OrdersView() {
   const PER_PAGE = 20;
   const status = filterValues["status"] ?? "";
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["wc", "orders", { search, status, page }],
     queryFn: () =>
       wcApi.orders({ search, status, page, per_page: PER_PAGE, orderby: "date", order: "desc" }),
@@ -313,108 +314,121 @@ export function OrdersView() {
           <Button size="sm" onClick={() => setSelected(row)}>
             View
           </Button>
-          <a
+          <LinkButton
+            size="sm"
             href={`/wp-admin/post.php?post=${row.wc_order_id}&action=edit`}
             target="_blank"
             rel="noreferrer"
-            className="eos-btn eos-btn--secondary eos-btn--sm"
           >
             WC ↗
-          </a>
+          </LinkButton>
         </div>
       ),
     },
   ];
 
   return (
-    <Stack>
-      <Grid minColumnWidth={160}>
-        <StatCard label="Total orders" value={total.toLocaleString()} />
-        <StatCard
-          label="Completed revenue"
-          value={fmtMoney(completedRevenue)}
-          hint="Completed orders only"
-        />
-        {withRefunds > 0 && (
+    <PageLayout
+      title="Orders"
+      description="Every WooCommerce order, read live and linked to EventOS events where mapped."
+    >
+      <Stack>
+        <Grid minColumnWidth={160}>
+          <StatCard label="Total orders" value={total.toLocaleString()} />
           <StatCard
-            label="Refunded"
-            value={fmtMoney(refundedTotal)}
-            hint={`${withRefunds} order${withRefunds !== 1 ? "s" : ""}`}
+            label="Completed revenue"
+            value={fmtMoney(completedRevenue)}
+            hint="Completed orders only"
           />
-        )}
-      </Grid>
-
-      <Alert tone="info" title="WooCommerce orders">
-        Orders are stored and processed in WooCommerce. EventOS reads order data to link tickets and
-        guests. Refunds and payment changes must be made in WooCommerce.
-      </Alert>
-
-      <Card
-        title={`Orders${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
-        actions={
-          <a
-            href={wcApi.exportOrders({ status, search })}
-            download
-            className="eos-btn eos-btn--secondary eos-btn--md"
-          >
-            Export CSV
-          </a>
-        }
-      >
-        <Stack>
-          <FilterBar
-            search={{
-              value: search,
-              onChange: setSearch,
-              placeholder: "Search by name, email, order #…",
-            }}
-            filters={[STATUS_FILTER, REFUND_FILTER, MAPPED_FILTER]}
-            values={filterValues}
-            onFilterChange={(key, value) => {
-              setFilterValues((prev) => ({ ...prev, [key]: value }));
-              setPage(1);
-            }}
-            onReset={() => {
-              setFilterValues({});
-              setSearch("");
-              setPage(1);
-            }}
-          />
-
-          {isLoading ? (
-            <LoadingState label="Loading orders…" />
-          ) : error ? (
-            <Alert tone="danger" title="Could not load orders">
-              {wcErrorMessage(error)}
-            </Alert>
-          ) : (
-            <>
-              <DataTable
-                caption="WooCommerce orders"
-                columns={columns}
-                rows={orders}
-                getRowId={(row) => String(row.id)}
-                emptyTitle="No orders found"
-                emptyDescription={
-                  search || status
-                    ? "Try adjusting your filters."
-                    : "Orders will appear here after the first sync."
-                }
-              />
-              {totalPages > 1 && (
-                <Pagination
-                  page={page}
-                  totalPages={totalPages}
-                  total={total}
-                  onPageChange={setPage}
-                />
-              )}
-            </>
+          {withRefunds > 0 && (
+            <StatCard
+              label="Refunded"
+              value={fmtMoney(refundedTotal)}
+              hint={`${withRefunds} order${withRefunds !== 1 ? "s" : ""}`}
+            />
           )}
-        </Stack>
-      </Card>
+        </Grid>
 
-      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} />}
-    </Stack>
+        <Alert tone="info" title="WooCommerce orders">
+          Orders are stored and processed in WooCommerce. EventOS reads order data to link tickets
+          and guests. Refunds and payment changes must be made in WooCommerce.
+        </Alert>
+
+        <Card
+          title={`Orders${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
+          actions={
+            <a
+              href={wcApi.exportOrders({ status, search })}
+              download
+              className="eos-btn eos-btn--secondary eos-btn--md"
+            >
+              Export CSV
+            </a>
+          }
+        >
+          <Stack>
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: "Search by name, email, order #…",
+              }}
+              filters={[STATUS_FILTER, REFUND_FILTER, MAPPED_FILTER]}
+              values={filterValues}
+              onFilterChange={(key, value) => {
+                setFilterValues((prev) => ({ ...prev, [key]: value }));
+                setPage(1);
+              }}
+              onReset={() => {
+                setFilterValues({});
+                setSearch("");
+                setPage(1);
+              }}
+            />
+
+            {isLoading ? (
+              <LoadingState label="Loading orders…" />
+            ) : error ? (
+              <Alert
+                tone="danger"
+                title="Could not load orders"
+                actions={
+                  <Button size="sm" onClick={() => void refetch()}>
+                    Retry
+                  </Button>
+                }
+              >
+                {wcErrorMessage(error)}
+              </Alert>
+            ) : (
+              <>
+                <DataTable
+                  caption="WooCommerce orders"
+                  columns={columns}
+                  rows={orders}
+                  getRowId={(row) => String(row.id)}
+                  emptyTitle="No orders found"
+                  emptyDescription={
+                    search || status
+                      ? "Try adjusting your filters."
+                      : "Orders placed through WooCommerce will appear here automatically."
+                  }
+                />
+                {totalPages > 1 && (
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    onPageChange={setPage}
+                  />
+                )}
+              </>
+            )}
+          </Stack>
+        </Card>
+
+        {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} />}
+      </Stack>
+    </PageLayout>
   );
 }

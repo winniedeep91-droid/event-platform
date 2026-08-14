@@ -9,8 +9,10 @@ import {
   Drawer,
   FilterBar,
   Grid,
+  LinkButton,
   LoadingState,
   Modal,
+  PageLayout,
   Pagination,
   Select,
   Stack,
@@ -168,14 +170,13 @@ function ProductDrawer({ product, onClose }: { product: WcProductRecord; onClose
       title={product.name}
       description={`SKU: ${product.sku || "—"} · #${product.id}`}
       footer={
-        <a
+        <LinkButton
           href={`/wp-admin/post.php?post=${product.id}&action=edit`}
           target="_blank"
           rel="noreferrer"
-          className="eos-btn eos-btn--secondary eos-btn--md"
         >
           Edit in WooCommerce ↗
-        </a>
+        </LinkButton>
       }
     >
       <Stack>
@@ -268,7 +269,7 @@ export function ProductsView() {
   const status = filterValues["status"] ?? "";
   const mapped = filterValues["mapped"] ?? "";
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["wc", "products", { search, status, mapped, page }],
     queryFn: () =>
       wcApi.products({
@@ -388,96 +389,109 @@ export function ProductsView() {
   ];
 
   return (
-    <Stack>
-      <Grid minColumnWidth={160}>
-        <StatCard label="Total products" value={total.toLocaleString()} />
-        <StatCard
-          label="Mapped to events"
-          value={mapped_count.toLocaleString()}
-          hint="in current page"
-        />
-        <StatCard
-          label="Unmapped"
-          value={(products.length - mapped_count).toLocaleString()}
-          hint="in current page"
-        />
-      </Grid>
-
-      <Alert tone="info" title="WooCommerce products">
-        Products are managed in WooCommerce and always read live here, so this list is never out of
-        date. EventOS maps products to events and ticket tiers for order tracking and guest
-        management. "Sync products" just refreshes each product's last-synced timestamp.
-      </Alert>
-
-      <Card
-        title={`Products${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
-        actions={
-          <Button
-            variant="primary"
-            loading={syncMutation.isPending}
-            onClick={() => syncMutation.mutate()}
-          >
-            Sync products
-          </Button>
-        }
-      >
-        <Stack>
-          <FilterBar
-            search={{
-              value: search,
-              onChange: setSearch,
-              placeholder: "Search by name or SKU…",
-            }}
-            filters={[STATUS_FILTER, MAPPED_FILTER]}
-            values={filterValues}
-            onFilterChange={(key, value) => {
-              setFilterValues((prev) => ({ ...prev, [key]: value }));
-              setPage(1);
-            }}
-            onReset={() => {
-              setFilterValues({});
-              setSearch("");
-              setPage(1);
-            }}
+    <PageLayout
+      title="Products"
+      description="Every WooCommerce product, mapped to EventOS events and ticket tiers where relevant."
+    >
+      <Stack>
+        <Grid minColumnWidth={160}>
+          <StatCard label="Total products" value={total.toLocaleString()} />
+          <StatCard
+            label="Mapped to events"
+            value={mapped_count.toLocaleString()}
+            hint="in current page"
           />
+          <StatCard
+            label="Unmapped"
+            value={(products.length - mapped_count).toLocaleString()}
+            hint="in current page"
+          />
+        </Grid>
 
-          {isLoading ? (
-            <LoadingState label="Loading products…" />
-          ) : error ? (
-            <Alert tone="danger" title="Could not load products">
-              {wcErrorMessage(error)}
-            </Alert>
-          ) : (
-            <>
-              <DataTable
-                caption="WooCommerce products"
-                columns={columns}
-                rows={products}
-                getRowId={(row) => String(row.id)}
-                emptyTitle="No products found"
-                emptyDescription={
-                  search || status
-                    ? "Try adjusting your filters."
-                    : "Products created in WooCommerce will appear here automatically."
+        <Alert tone="info" title="WooCommerce products">
+          Products are managed in WooCommerce and always read live here, so this list is never out
+          of date. EventOS maps products to events and ticket tiers for order tracking and guest
+          management. "Sync products" just refreshes each product's last-synced timestamp.
+        </Alert>
+
+        <Card
+          title={`Products${total > 0 ? ` (${total.toLocaleString()})` : ""}`}
+          actions={
+            <Button
+              variant="primary"
+              loading={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              Sync products
+            </Button>
+          }
+        >
+          <Stack>
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: "Search by name or SKU…",
+              }}
+              filters={[STATUS_FILTER, MAPPED_FILTER]}
+              values={filterValues}
+              onFilterChange={(key, value) => {
+                setFilterValues((prev) => ({ ...prev, [key]: value }));
+                setPage(1);
+              }}
+              onReset={() => {
+                setFilterValues({});
+                setSearch("");
+                setPage(1);
+              }}
+            />
+
+            {isLoading ? (
+              <LoadingState label="Loading products…" />
+            ) : error ? (
+              <Alert
+                tone="danger"
+                title="Could not load products"
+                actions={
+                  <Button size="sm" onClick={() => void refetch()}>
+                    Retry
+                  </Button>
                 }
-              />
-              {totalPages > 1 && (
-                <Pagination
-                  page={page}
-                  totalPages={totalPages}
-                  total={total}
-                  onPageChange={setPage}
+              >
+                {wcErrorMessage(error)}
+              </Alert>
+            ) : (
+              <>
+                <DataTable
+                  caption="WooCommerce products"
+                  columns={columns}
+                  rows={products}
+                  getRowId={(row) => String(row.id)}
+                  emptyTitle="No products found"
+                  emptyDescription={
+                    search || status
+                      ? "Try adjusting your filters."
+                      : "Products created in WooCommerce will appear here automatically."
+                  }
                 />
-              )}
-            </>
-          )}
-        </Stack>
-      </Card>
+                {totalPages > 1 && (
+                  <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    onPageChange={setPage}
+                  />
+                )}
+              </>
+            )}
+          </Stack>
+        </Card>
 
-      {drawer && <ProductDrawer product={drawer} onClose={() => setDrawer(null)} />}
-      {mappingTarget && (
-        <MappingModal product={mappingTarget} onClose={() => setMappingTarget(null)} />
-      )}
-    </Stack>
+        {drawer && <ProductDrawer product={drawer} onClose={() => setDrawer(null)} />}
+        {mappingTarget && (
+          <MappingModal product={mappingTarget} onClose={() => setMappingTarget(null)} />
+        )}
+      </Stack>
+    </PageLayout>
   );
 }

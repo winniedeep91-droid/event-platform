@@ -45,7 +45,10 @@ export function EventsListView() {
   const [perPage, setPerPage] = useState(20);
   const [pendingDelete, setPendingDelete] = useState<EventRecord | null>(null);
 
-  const options = useQuery({ queryKey: ["eventos", "events", "options"], queryFn: eventsApi.options });
+  const options = useQuery({
+    queryKey: ["eventos", "events", "options"],
+    queryFn: eventsApi.options,
+  });
 
   const params: EventListParams = {
     search,
@@ -88,9 +91,13 @@ export function EventsListView() {
   });
 
   const transition = useMutation({
-    mutationFn: (input: { id: number; status: string }) => eventsApi.transition(input.id, input.status),
+    mutationFn: (input: { id: number; status: string }) =>
+      eventsApi.transition(input.id, input.status),
     onSuccess: (event) => {
-      toast.success(`“${event.title}” is now ${statusLabel(event.status, options.data?.statuses)}.`, "Status updated");
+      toast.success(
+        `“${event.title}” is now ${statusLabel(event.status, options.data?.statuses)}.`,
+        "Status updated",
+      );
       invalidate();
     },
     onError: (error: unknown) => toast.error(errorMessage(error), "Transition failed"),
@@ -119,13 +126,19 @@ export function EventsListView() {
     {
       key: "venue_id",
       label: "Venue",
-      options: (options.data?.venues ?? []).map((venue) => ({ value: String(venue.id), label: venue.name })),
+      options: (options.data?.venues ?? []).map((venue) => ({
+        value: String(venue.id),
+        label: venue.name,
+      })),
       placeholder: "All venues",
     },
     {
       key: "category_id",
       label: "Category",
-      options: (options.data?.categories ?? []).map((term) => ({ value: String(term.id), label: term.name })),
+      options: (options.data?.categories ?? []).map((term) => ({
+        value: String(term.id),
+        label: term.name,
+      })),
       placeholder: "All categories",
     },
   ];
@@ -142,15 +155,29 @@ export function EventsListView() {
         </a>
       ),
     },
-    { key: "starts_at", header: "Starts", sortable: true, cell: (row) => formatDateTime(row.starts_at) },
+    {
+      key: "starts_at",
+      header: "Starts",
+      sortable: true,
+      cell: (row) => formatDateTime(row.starts_at),
+    },
     { key: "venue_id", header: "Venue", cell: (row) => venueLabel(row) },
-    { key: "capacity", header: "Capacity", align: "right", sortable: true, cell: (row) => row.capacity || "—" },
+    {
+      key: "capacity",
+      header: "Capacity",
+      align: "right",
+      sortable: true,
+      cell: (row) => row.capacity || "—",
+    },
     {
       key: "status",
       header: "Status",
       sortable: true,
       cell: (row) => (
-        <StatusChip status={statusKind(row.status)} label={statusLabel(row.status, options.data?.statuses)} />
+        <StatusChip
+          status={statusKind(row.status)}
+          label={statusLabel(row.status, options.data?.statuses)}
+        />
       ),
     },
     {
@@ -185,7 +212,11 @@ export function EventsListView() {
       align: "right",
       cell: (row) => (
         <div className="eos-inline" style={{ justifyContent: "flex-end" }}>
-          <Button size="sm" variant="ghost" onClick={() => goTo(EVENTS_PAGES.list, { event: row.id })}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => goTo(EVENTS_PAGES.list, { event: row.id })}
+          >
             Open
           </Button>
           <Button
@@ -215,8 +246,6 @@ export function EventsListView() {
       }
     >
       <Stack>
-        {list.error ? <Alert tone="danger" title="Could not load events">{errorMessage(list.error)}</Alert> : null}
-
         <Card flush>
           <FilterBar
             search={{
@@ -241,38 +270,52 @@ export function EventsListView() {
           />
         </Card>
 
-        <DataTable
-          caption="Events"
-          columns={columns}
-          rows={list.data?.items ?? []}
-          getRowId={(row) => String(row.id)}
-          loading={list.isLoading}
-          sort={sort}
-          onSortChange={(next) => {
-            setPage(1);
-            setSort(next);
-          }}
-          emptyTitle="No events found"
-          emptyDescription="Adjust the filters, or create the first event."
-          emptyAction={
-            <Button variant="primary" onClick={() => goTo(EVENTS_PAGES.list, { action: "new" })}>
-              New event
-            </Button>
-          }
-          footer={
-            <Pagination
-              page={list.data?.page ?? page}
-              totalPages={list.data?.totalPages ?? 1}
-              total={list.data?.total}
-              perPage={perPage}
-              onPageChange={setPage}
-              onPerPageChange={(value) => {
-                setPerPage(value);
-                setPage(1);
-              }}
-            />
-          }
-        />
+        {list.error ? (
+          <Alert
+            tone="danger"
+            title="Could not load events"
+            actions={
+              <Button size="sm" onClick={() => void list.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            {errorMessage(list.error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption="Events"
+            columns={columns}
+            rows={list.data?.items ?? []}
+            getRowId={(row) => String(row.id)}
+            loading={list.isLoading}
+            sort={sort}
+            onSortChange={(next) => {
+              setPage(1);
+              setSort(next);
+            }}
+            emptyTitle="No events found"
+            emptyDescription="Adjust the filters, or create the first event."
+            emptyAction={
+              <Button variant="primary" onClick={() => goTo(EVENTS_PAGES.list, { action: "new" })}>
+                New event
+              </Button>
+            }
+            footer={
+              <Pagination
+                page={list.data?.page ?? page}
+                totalPages={list.data?.totalPages ?? 1}
+                total={list.data?.total}
+                perPage={perPage}
+                onPageChange={setPage}
+                onPerPageChange={(value) => {
+                  setPerPage(value);
+                  setPage(1);
+                }}
+              />
+            }
+          />
+        )}
       </Stack>
 
       <ConfirmDialog

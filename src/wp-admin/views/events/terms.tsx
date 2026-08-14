@@ -68,7 +68,10 @@ export function EventTermsView({ taxonomy }: { taxonomy: EventTaxonomy }) {
         : eventsApi.createTerm(taxonomy, payload);
     },
     onSuccess: () => {
-      toast.success(editing ? `The ${copy.singular} was updated.` : `The ${copy.singular} was created.`, "Saved");
+      toast.success(
+        editing ? `The ${copy.singular} was updated.` : `The ${copy.singular} was created.`,
+        "Saved",
+      );
       reset();
       invalidate();
     },
@@ -132,26 +135,40 @@ export function EventTermsView({ taxonomy }: { taxonomy: EventTaxonomy }) {
       }
     >
       <Stack>
-        {list.error ? (
-          <Alert tone="danger" title={`Could not load ${copy.title.toLowerCase()}`}>{errorMessage(list.error)}</Alert>
-        ) : null}
-
         <Card flush>
           <FilterBar
-            search={{ value: search, onChange: setSearch, placeholder: `Search ${copy.title.toLowerCase()}…` }}
+            search={{
+              value: search,
+              onChange: setSearch,
+              placeholder: `Search ${copy.title.toLowerCase()}…`,
+            }}
             onReset={() => setSearch("")}
           />
         </Card>
 
-        <DataTable
-          caption={copy.title}
-          columns={columns}
-          rows={list.data?.items ?? []}
-          getRowId={(row) => String(row.id)}
-          loading={list.isLoading}
-          emptyTitle={`No ${copy.title.toLowerCase()} yet`}
-          emptyDescription={`Create the first ${copy.singular} to classify events.`}
-        />
+        {list.error ? (
+          <Alert
+            tone="danger"
+            title={`Could not load ${copy.title.toLowerCase()}`}
+            actions={
+              <Button size="sm" onClick={() => void list.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            {errorMessage(list.error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption={copy.title}
+            columns={columns}
+            rows={list.data?.items ?? []}
+            getRowId={(row) => String(row.id)}
+            loading={list.isLoading}
+            emptyTitle={`No ${copy.title.toLowerCase()} yet`}
+            emptyDescription={`Create the first ${copy.singular} to classify events.`}
+          />
+        )}
       </Stack>
 
       <Modal
@@ -170,7 +187,12 @@ export function EventTermsView({ taxonomy }: { taxonomy: EventTaxonomy }) {
         }
       >
         <Stack>
-          <Input label="Name" required value={name} onChange={(event) => setName(event.target.value)} />
+          <Input
+            label="Name"
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
           <Textarea
             label="Description"
             rows={3}

@@ -96,7 +96,8 @@ export function VenuesView() {
   });
 
   const save = useMutation({
-    mutationFn: () => (editing ? eventsApi.updateVenue(editing.id, payload()) : eventsApi.createVenue(payload())),
+    mutationFn: () =>
+      editing ? eventsApi.updateVenue(editing.id, payload()) : eventsApi.createVenue(payload()),
     onSuccess: () => {
       toast.success(editing ? "Venue updated." : "Venue created.", "Saved");
       setEditing(null);
@@ -169,8 +170,6 @@ export function VenuesView() {
       }
     >
       <Stack>
-        {list.error ? <Alert tone="danger" title="Could not load venues">{errorMessage(list.error)}</Alert> : null}
-
         <Card flush>
           <FilterBar
             search={{
@@ -188,28 +187,42 @@ export function VenuesView() {
           />
         </Card>
 
-        <DataTable
-          caption="Venues"
-          columns={columns}
-          rows={list.data?.items ?? []}
-          getRowId={(row) => String(row.id)}
-          loading={list.isLoading}
-          emptyTitle="No venues yet"
-          emptyDescription="Create the first venue to schedule events against it."
-          footer={
-            <Pagination
-              page={list.data?.page ?? page}
-              totalPages={list.data?.totalPages ?? 1}
-              total={list.data?.total}
-              perPage={perPage}
-              onPageChange={setPage}
-              onPerPageChange={(value) => {
-                setPerPage(value);
-                setPage(1);
-              }}
-            />
-          }
-        />
+        {list.error ? (
+          <Alert
+            tone="danger"
+            title="Could not load venues"
+            actions={
+              <Button size="sm" onClick={() => void list.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            {errorMessage(list.error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption="Venues"
+            columns={columns}
+            rows={list.data?.items ?? []}
+            getRowId={(row) => String(row.id)}
+            loading={list.isLoading}
+            emptyTitle="No venues yet"
+            emptyDescription="Create the first venue to schedule events against it."
+            footer={
+              <Pagination
+                page={list.data?.page ?? page}
+                totalPages={list.data?.totalPages ?? 1}
+                total={list.data?.total}
+                perPage={perPage}
+                onPageChange={setPage}
+                onPerPageChange={(value) => {
+                  setPerPage(value);
+                  setPage(1);
+                }}
+              />
+            }
+          />
+        )}
       </Stack>
 
       <Modal
@@ -238,19 +251,64 @@ export function VenuesView() {
         }
       >
         <Stack>
-          <Input label="Name" required value={form.name} onChange={(e) => set("name", e.target.value)} />
+          <Input
+            label="Name"
+            required
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+          />
           <Grid minColumnWidth={240}>
-            <Input label="Address line 1" value={form.address_line1} onChange={(e) => set("address_line1", e.target.value)} />
-            <Input label="Address line 2" value={form.address_line2} onChange={(e) => set("address_line2", e.target.value)} />
+            <Input
+              label="Address line 1"
+              value={form.address_line1}
+              onChange={(e) => set("address_line1", e.target.value)}
+            />
+            <Input
+              label="Address line 2"
+              value={form.address_line2}
+              onChange={(e) => set("address_line2", e.target.value)}
+            />
             <Input label="City" value={form.city} onChange={(e) => set("city", e.target.value)} />
-            <Input label="Province" value={form.province} onChange={(e) => set("province", e.target.value)} />
-            <Input label="Postal code" value={form.postal_code} onChange={(e) => set("postal_code", e.target.value)} />
-            <Input label="Country" value={form.country} onChange={(e) => set("country", e.target.value)} />
-            <Input label="Capacity" type="number" min={0} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} />
-            <Input label="Maps URL" value={form.maps_url} onChange={(e) => set("maps_url", e.target.value)} />
+            <Input
+              label="Province"
+              value={form.province}
+              onChange={(e) => set("province", e.target.value)}
+            />
+            <Input
+              label="Postal code"
+              value={form.postal_code}
+              onChange={(e) => set("postal_code", e.target.value)}
+            />
+            <Input
+              label="Country"
+              value={form.country}
+              onChange={(e) => set("country", e.target.value)}
+            />
+            <Input
+              label="Capacity"
+              type="number"
+              min={0}
+              value={form.capacity}
+              onChange={(e) => set("capacity", e.target.value)}
+            />
+            <Input
+              label="Maps URL"
+              value={form.maps_url}
+              onChange={(e) => set("maps_url", e.target.value)}
+            />
           </Grid>
-          <Textarea label="Parking information" rows={2} value={form.parking_info} onChange={(e) => set("parking_info", e.target.value)} />
-          <Textarea label="Notes" rows={3} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+          <Textarea
+            label="Parking information"
+            rows={2}
+            value={form.parking_info}
+            onChange={(e) => set("parking_info", e.target.value)}
+          />
+          <Textarea
+            label="Notes"
+            rows={3}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
         </Stack>
       </Modal>
 

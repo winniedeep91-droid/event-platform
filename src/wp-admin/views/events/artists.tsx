@@ -78,7 +78,9 @@ export function ArtistsView() {
           .filter(Boolean),
       };
 
-      return editing ? eventsApi.updateArtist(editing.id, payload) : eventsApi.createArtist(payload);
+      return editing
+        ? eventsApi.updateArtist(editing.id, payload)
+        : eventsApi.createArtist(payload);
     },
     onSuccess: () => {
       toast.success(editing ? "Artist updated." : "Artist created.", "Saved");
@@ -168,8 +170,6 @@ export function ArtistsView() {
       }
     >
       <Stack>
-        {list.error ? <Alert tone="danger" title="Could not load artists">{errorMessage(list.error)}</Alert> : null}
-
         <Card flush>
           <FilterBar
             search={{
@@ -187,28 +187,42 @@ export function ArtistsView() {
           />
         </Card>
 
-        <DataTable
-          caption="Artists"
-          columns={columns}
-          rows={list.data?.items ?? []}
-          getRowId={(row) => String(row.id)}
-          loading={list.isLoading}
-          emptyTitle="No artists yet"
-          emptyDescription="Create the first artist profile to build line-ups."
-          footer={
-            <Pagination
-              page={list.data?.page ?? page}
-              totalPages={list.data?.totalPages ?? 1}
-              total={list.data?.total}
-              perPage={perPage}
-              onPageChange={setPage}
-              onPerPageChange={(value) => {
-                setPerPage(value);
-                setPage(1);
-              }}
-            />
-          }
-        />
+        {list.error ? (
+          <Alert
+            tone="danger"
+            title="Could not load artists"
+            actions={
+              <Button size="sm" onClick={() => void list.refetch()}>
+                Retry
+              </Button>
+            }
+          >
+            {errorMessage(list.error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption="Artists"
+            columns={columns}
+            rows={list.data?.items ?? []}
+            getRowId={(row) => String(row.id)}
+            loading={list.isLoading}
+            emptyTitle="No artists yet"
+            emptyDescription="Create the first artist profile to build line-ups."
+            footer={
+              <Pagination
+                page={list.data?.page ?? page}
+                totalPages={list.data?.totalPages ?? 1}
+                total={list.data?.total}
+                perPage={perPage}
+                onPageChange={setPage}
+                onPerPageChange={(value) => {
+                  setPerPage(value);
+                  setPage(1);
+                }}
+              />
+            }
+          />
+        )}
       </Stack>
 
       <Modal
@@ -236,7 +250,12 @@ export function ArtistsView() {
         }
       >
         <Stack>
-          <Input label="Name" required value={form.name} onChange={(e) => set("name", e.target.value)} />
+          <Input
+            label="Name"
+            required
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+          />
           <Grid minColumnWidth={240}>
             <Input
               label="Genres"
@@ -244,10 +263,23 @@ export function ArtistsView() {
               value={form.genres}
               onChange={(e) => set("genres", e.target.value)}
             />
-            <Input label="Country" value={form.country} onChange={(e) => set("country", e.target.value)} />
-            <Input label="Website" value={form.website} onChange={(e) => set("website", e.target.value)} />
+            <Input
+              label="Country"
+              value={form.country}
+              onChange={(e) => set("country", e.target.value)}
+            />
+            <Input
+              label="Website"
+              value={form.website}
+              onChange={(e) => set("website", e.target.value)}
+            />
           </Grid>
-          <Textarea label="Biography" rows={5} value={form.biography} onChange={(e) => set("biography", e.target.value)} />
+          <Textarea
+            label="Biography"
+            rows={5}
+            value={form.biography}
+            onChange={(e) => set("biography", e.target.value)}
+          />
         </Stack>
       </Modal>
 
@@ -260,7 +292,11 @@ export function ArtistsView() {
           caption="Performance history"
           columns={[
             { key: "event_title", header: "Event", cell: (row) => row.event_title },
-            { key: "event_starts_at", header: "Date", cell: (row) => formatDateTime(row.event_starts_at) },
+            {
+              key: "event_starts_at",
+              header: "Date",
+              cell: (row) => formatDateTime(row.event_starts_at),
+            },
             { key: "event_status", header: "Status", cell: (row) => statusLabel(row.event_status) },
             { key: "billing", header: "Billing", cell: (row) => row.billing || "—" },
           ]}

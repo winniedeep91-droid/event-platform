@@ -119,82 +119,92 @@ export function EventsCalendarView() {
     >
       <Stack>
         {calendar.error ? (
-          <Alert tone="danger" title="Could not load the calendar">
+          <Alert
+            tone="danger"
+            title="Could not load the calendar"
+            actions={
+              <Button size="sm" onClick={() => void calendar.refetch()}>
+                Retry
+              </Button>
+            }
+          >
             {errorMessage(calendar.error)}
           </Alert>
-        ) : null}
-
-        <Card title={monthLabel} flush>
-          {calendar.isLoading ? (
-            <LoadingState label="Loading calendar…" />
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-                gap: 1,
-                padding: 1,
-                background: "var(--eos-border)",
-                borderRadius: "var(--eos-radius-lg)",
-                overflow: "hidden",
-              }}
-            >
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+        ) : (
+          <>
+            <Card title={monthLabel} flush>
+              {calendar.isLoading ? (
+                <LoadingState label="Loading calendar…" />
+              ) : (
                 <div
-                  key={label}
-                  className="eos-page__description"
                   style={{
-                    padding: "var(--eos-space-2) var(--eos-space-3)",
-                    fontWeight: 600,
-                    background: "var(--eos-surface-muted)",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                    gap: 1,
+                    padding: 1,
+                    background: "var(--eos-border)",
+                    borderRadius: "var(--eos-radius-lg)",
+                    overflow: "hidden",
                   }}
                 >
-                  {label}
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+                    <div
+                      key={label}
+                      className="eos-page__description"
+                      style={{
+                        padding: "var(--eos-space-2) var(--eos-space-3)",
+                        fontWeight: 600,
+                        background: "var(--eos-surface-muted)",
+                      }}
+                    >
+                      {label}
+                    </div>
+                  ))}
+                  {days.map((cell) => (
+                    <div
+                      key={cell.key}
+                      style={{
+                        minHeight: 108,
+                        padding: "var(--eos-space-2) var(--eos-space-3)",
+                        background: "var(--eos-surface)",
+                      }}
+                    >
+                      {cell.date ? (
+                        <Stack style={{ gap: "var(--eos-space-1)" }}>
+                          <span className="eos-page__description">
+                            {Number(cell.date.slice(8, 10))}
+                          </span>
+                          <Stack style={{ gap: "var(--eos-space-1)" }}>
+                            {(byDate.get(cell.date) ?? []).map((event) => (
+                              <a
+                                key={event.id}
+                                href={pageUrl(EVENTS_PAGES.list, { event: event.id })}
+                                title={`${event.title} — ${formatDateTime(event.starts_at)}`}
+                              >
+                                <StatusChip
+                                  status={statusKind(event.status)}
+                                  label={`${event.title.slice(0, 22)}${event.title.length > 22 ? "…" : ""}`}
+                                />
+                              </a>
+                            ))}
+                          </Stack>
+                        </Stack>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {days.map((cell) => (
-                <div
-                  key={cell.key}
-                  style={{
-                    minHeight: 108,
-                    padding: "var(--eos-space-2) var(--eos-space-3)",
-                    background: "var(--eos-surface)",
-                  }}
-                >
-                  {cell.date ? (
-                    <Stack style={{ gap: "var(--eos-space-1)" }}>
-                      <span className="eos-page__description">
-                        {Number(cell.date.slice(8, 10))}
-                      </span>
-                      <Stack style={{ gap: "var(--eos-space-1)" }}>
-                        {(byDate.get(cell.date) ?? []).map((event) => (
-                          <a
-                            key={event.id}
-                            href={pageUrl(EVENTS_PAGES.list, { event: event.id })}
-                            title={`${event.title} — ${formatDateTime(event.starts_at)}`}
-                          >
-                            <StatusChip
-                              status={statusKind(event.status)}
-                              label={`${event.title.slice(0, 22)}${event.title.length > 22 ? "…" : ""}`}
-                            />
-                          </a>
-                        ))}
-                      </Stack>
-                    </Stack>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+              )}
+            </Card>
 
-        <Card title="Scheduled this month" flush>
-          <ScheduledThisMonthTable
-            events={calendar.data?.events ?? []}
-            statuses={options.data?.statuses}
-            monthLabel={monthLabel}
-          />
-        </Card>
+            <Card title="Scheduled this month" flush>
+              <ScheduledThisMonthTable
+                events={calendar.data?.events ?? []}
+                statuses={options.data?.statuses}
+                monthLabel={monthLabel}
+              />
+            </Card>
+          </>
+        )}
       </Stack>
     </PageLayout>
   );

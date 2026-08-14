@@ -169,21 +169,41 @@ body.rtl #wpfooter {
   padding: 0;
 }
 
-/* Sub-heading within a group's item list — separates screens that share a
-   name but not a system, e.g. "Diagnostics" (platform) from "Diagnostics"
-   (WooCommerce), without a second full sidebar section and divider. */
-.eos-sidebar__section-label {
-  margin: var(--eos-space-3) var(--eos-space-3) 2px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--eos-fg-muted);
-  opacity: 0.7;
+/* Expand/collapse trigger for "Settings" and "System" — same label styling
+   as the static group heading, just wrapped in a full-width button with a
+   rotating chevron. */
+.eos-sidebar__group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--eos-space-2);
+  width: 100%;
+  margin: 0 0 var(--eos-space-1);
+  padding: 0 var(--eos-space-3);
+  background: none;
+  border: 0;
+  border-radius: var(--eos-radius-sm);
+  cursor: pointer;
+  font: inherit;
 }
 
-.eos-sidebar__group li:first-child .eos-sidebar__section-label {
-  margin-top: 0;
+.eos-sidebar__group-toggle:hover {
+  color: var(--eos-fg);
+}
+
+.eos-sidebar__group-toggle .eos-sidebar__group-label {
+  margin: 0;
+  padding: 0;
+}
+
+.eos-sidebar__group-chevron {
+  display: inline-flex;
+  color: var(--eos-fg-muted);
+  transition: transform 120ms ease;
+}
+
+.eos-sidebar__group-toggle[aria-expanded="true"] .eos-sidebar__group-chevron {
+  transform: rotate(90deg);
 }
 
 .eos-sidebar__group a {
@@ -221,6 +241,28 @@ body.rtl #wpfooter {
   box-shadow: inset 2px 0 0 var(--eos-primary);
   color: var(--eos-primary);
   font-weight: 600;
+}
+
+/* Exit route back to normal wp-admin, kept visually apart from EventOS's
+   own navigation (divider + muted styling) so it reads as leaving the app
+   rather than as another EventOS destination. */
+.eos-sidebar__exit {
+  margin-top: var(--eos-space-2);
+}
+
+.eos-sidebar__exit-link {
+  display: block;
+  margin: 1px var(--eos-space-2);
+  padding: var(--eos-space-2) var(--eos-space-3);
+  border-radius: var(--eos-radius-sm);
+  font-size: var(--eos-text-sm);
+  color: var(--eos-fg-muted);
+  text-decoration: none;
+}
+
+.eos-sidebar__exit-link:hover {
+  background: var(--eos-surface-muted);
+  color: var(--eos-fg);
 }
 
 /* ----------------------------------------------------------------- topbar */

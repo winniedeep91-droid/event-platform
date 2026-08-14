@@ -4,9 +4,10 @@
  * Rendered twice by AdminApp: once as a persistent column on wide viewports,
  * once inside a Drawer for narrow ones. Content is identical either way.
  */
+import { useState } from "react";
 import type { MenuItem } from "./navigation";
 import { DASHBOARD_SLUG, NAV_GROUPS } from "./navigation";
-import type { EventOSConfig } from "./api";
+import { config, type EventOSConfig } from "./api";
 
 export function Sidebar({
   menu,
@@ -23,6 +24,34 @@ export function Sidebar({
   const bySlug = new Map(menu.map((item) => [item.slug, item]));
   const dashboard = bySlug.get(DASHBOARD_SLUG);
   const logo = branding.logos.dashboard?.url || branding.logos.business?.url || "";
+
+  // adminUrl is always exactly ".../wp-admin/admin.php" (no query string —
+  // see Admin_Assets::config()), so swapping the filename is enough to reach
+  // the normal WordPress Dashboard.
+  const wpDashboardUrl = config().adminUrl.replace(/admin\.php$/, "index.php");
+
+  // Collapsible groups start expanded when the current page belongs to
+  // them, and collapsed otherwise. Since navigation here is full page loads
+  // rather than client-side routing, this recomputes correctly on every
+  // page visit without needing any persistence.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    for (const group of NAV_GROUPS) {
+      if (group.collapsible && group.items.some((leaf) => bySlug.get(leaf.slug)?.view === view)) {
+        initial.add(group.id);
+      }
+    }
+    return initial;
+  });
+
+  const toggleGroup = (id: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <nav className="eos-sidebar" aria-label="EventOS">
@@ -53,6 +82,7 @@ export function Sidebar({
           if (!items.length) return null;
 
           const isSecondary = group.id === "settings" || group.id === "system";
+          const isExpanded = !group.collapsible || expandedGroups.has(group.id);
 
           return (
             <div
@@ -65,26 +95,51 @@ export function Sidebar({
               {group.id === "settings" ? (
                 <div className="eos-sidebar__divider" role="separator" />
               ) : null}
-              <p className="eos-sidebar__group-label">{group.label}</p>
-              <ul>
-                {items.map(({ leaf, item }) => (
-                  <li key={leaf.slug}>
-                    {leaf.section ? (
-                      <p className="eos-sidebar__section-label">{leaf.section}</p>
-                    ) : null}
-                    <a
-                      href={item.url}
-                      aria-current={item.view === view ? "page" : undefined}
-                      onClick={onNavigate}
-                    >
-                      {leaf.label ?? item.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {group.collapsible ? (
+                <button
+                  type="button"
+                  className="eos-sidebar__group-toggle"
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <span className="eos-sidebar__group-label">{group.label}</span>
+                  <span className="eos-sidebar__group-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+              ) : (
+                <p className="eos-sidebar__group-label">{group.label}</p>
+              )}
+              {isExpanded ? (
+                <ul>
+                  {items.map(({ leaf, item }) => (
+                    <li key={leaf.slug}>
+                      <a
+                        href={item.url}
+                        aria-current={item.view === view ? "page" : undefined}
+                        onClick={onNavigate}
+                      >
+                        {leaf.label ?? item.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           );
         })}
+
+        {/* Visually separated exit from EventOS back to normal wp-admin —
+            the native admin sidebar is hidden while inside EventOS (see
+            admin.css), so this is otherwise the only way back to it. A plain
+            link to a non-EventOS admin page, not an EventOS route: it causes
+            a full navigation away from the React app. */}
+        <div className="eos-sidebar__exit">
+          <div className="eos-sidebar__divider" role="separator" />
+          <a href={wpDashboardUrl} className="eos-sidebar__exit-link">
+            ← WordPress Dashboard
+          </a>
+        </div>
       </div>
     </nav>
   );

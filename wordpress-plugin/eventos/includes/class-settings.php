@@ -71,14 +71,13 @@ final class Settings {
 					'email_header_logo_id' => self::field( __( 'Email Header Logo', 'eventos' ), 'attachment', 0 ),
 					'pdf_logo_id'          => self::field( __( 'PDF Logo', 'eventos' ), 'attachment', 0 ),
 					'favicon_id'           => self::field( __( 'Favicon', 'eventos' ), 'attachment', 0 ),
-					// Defaults match the peach/sage tokens the admin UI ships
-					// with (src/wp-admin/ui/ui.css: --eos-primary/--eos-secondary/
-					// --eos-accent) so a fresh install's branding preview matches
-					// what the shell actually looks like, rather than the
-					// unrelated slate/blue this used to default to.
-					'primary_color'        => self::field( __( 'Primary Colour', 'eventos' ), 'color', '#5a6663' ),
-					'secondary_color'      => self::field( __( 'Secondary Colour', 'eventos' ), 'color', '#303534' ),
-					'accent_color'         => self::field( __( 'Accent Colour', 'eventos' ), 'color', '#c3c2ba' ),
+					// Defaults match the deep green / warm sand tokens the admin
+					// UI ships with (src/wp-admin/ui/ui.css: --eos-primary/
+					// --eos-secondary/--eos-accent) so a fresh install's branding
+					// preview matches what the shell actually looks like.
+					'primary_color'        => self::field( __( 'Primary Colour', 'eventos' ), 'color', '#004437' ),
+					'secondary_color'      => self::field( __( 'Secondary Colour', 'eventos' ), 'color', '#00332a' ),
+					'accent_color'         => self::field( __( 'Accent Colour', 'eventos' ), 'color', '#d5b38e' ),
 				),
 			),
 			'regional' => array(

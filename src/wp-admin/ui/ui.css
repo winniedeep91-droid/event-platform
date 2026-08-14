@@ -29,25 +29,35 @@
   --eos-text-xl: 22px;
   --eos-text-2xl: 28px;
 
-  /* Brand palette: derived entirely from the two source colours, #FEEDE1
-     (peach) and #889794 (sage). Tints/shades of those two hues only —
-     semantic status colours stay conventional (green/amber/red/blue) since
-     they carry meaning independent of the brand accent. Every pairing below
-     is contrast-checked (WCAG relative luminance) against the surface it's
-     meant to sit on; see the derivation notes next to each token. */
-  --eos-bg: #feede1; /* peach, source colour */
+  /* Brand palette: EventOS Deep Green (#004437) is the primary brand/action
+     colour; Warm Sand (#D5B38E) is a secondary/accent colour for supporting
+     highlights and must never become the dominant background. Page and
+     surface tones are a neutral warm off-white — not sand — so the two
+     brand colours stay distinctive accents rather than tinting every panel.
+     Semantic status colours stay conventional (green/amber/red/blue) since
+     they carry meaning independent of the brand accent, and are kept
+     visually distinct from the primary green (deep, near-black teal-green
+     vs. a brighter, clearly different mid-tone success green). Every
+     pairing below is contrast-checked (WCAG relative luminance) against the
+     surface it's meant to sit on; see the derivation notes next to each
+     token. */
+  --eos-bg: #f7f5f0; /* neutral warm off-white — breathing room, not sand */
   --eos-surface: #ffffff;
-  --eos-surface-muted: #fef5ee; /* white tinted toward peach, 1.08:1 vs surface */
-  --eos-border: #f2e4d9; /* peach shaded toward sage, 1.24:1 vs surface */
-  --eos-border-strong: #dbd3ca; /* 1.48:1 vs surface */
+  --eos-surface-elevated: #ffffff; /* modals, dropdowns, popovers */
+  --eos-surface-muted: #f2efe8; /* fill within a white surface — table headers, hover */
+  --eos-border: #e6e0d3; /* 1.3:1 vs surface */
+  --eos-border-strong: #d2c7b3; /* 1.7:1 vs surface */
   --eos-fg: #262320;
-  --eos-fg-muted: #66716f; /* darkened sage, 5.05:1 vs white */
+  --eos-fg-muted: #66716f; /* 5.05:1 vs white */
   --eos-fg-inverse: #ffffff;
 
-  --eos-primary: var(--eventos-primary, #5a6663); /* darkened sage, 5.97:1 vs white */
+  --eos-primary: var(--eventos-primary, #004437); /* deep green, 11.2:1 vs white */
+  --eos-primary-hover: var(--eventos-primary-hover, #0b5c49); /* 7.9:1 vs white */
+  --eos-primary-active: var(--eventos-primary-active, #00332a); /* 13.9:1 vs white */
   --eos-primary-fg: #ffffff;
-  --eos-secondary: var(--eventos-secondary, #303534); /* deep sage-charcoal */
-  --eos-accent: var(--eventos-accent, #c3c2ba); /* soft peach/sage blend, fills only */
+  --eos-secondary: var(--eventos-secondary, #00332a); /* deep green, secondary brand tone */
+  --eos-secondary-fg: var(--eos-fg);
+  --eos-accent: var(--eventos-accent, #d5b38e); /* warm sand, fills only — 7.9:1 with --eos-fg on top */
 
   --eos-success: #15803d;
   --eos-success-soft: #ecfdf5;
@@ -73,13 +83,17 @@
 .eos .eos-dark {
   --eos-bg: #181b1b;
   --eos-surface: #262a29;
+  --eos-surface-elevated: #2e3332;
   --eos-surface-muted: #2e3332;
   --eos-border: #404443;
   --eos-border-strong: #565958;
-  --eos-fg: #fef4ed; /* warm peach-white, keeps the brand identity in dark mode */
+  --eos-fg: #fef4ed; /* warm off-white, keeps text warm in dark mode */
   --eos-fg-muted: #9aa7a4;
-  --eos-primary: #9daaa7; /* lightened sage, 6.05:1 vs dark surface */
+  --eos-primary: #7fc4ac; /* lightened deep green, 7.2:1 vs dark surface */
+  --eos-primary-hover: #93d0ba;
+  --eos-primary-active: #63b096;
   --eos-primary-fg: #181b1b;
+  --eos-secondary-fg: var(--eos-fg);
   --eos-success-soft: rgba(21, 128, 61, 0.16);
   --eos-warning-soft: rgba(180, 83, 9, 0.16);
   --eos-danger-soft: rgba(185, 28, 28, 0.18);
@@ -98,13 +112,17 @@
   .eos.eos-auto {
     --eos-bg: #181b1b;
     --eos-surface: #262a29;
+    --eos-surface-elevated: #2e3332;
     --eos-surface-muted: #2e3332;
     --eos-border: #404443;
     --eos-border-strong: #565958;
     --eos-fg: #fef4ed;
     --eos-fg-muted: #9aa7a4;
-    --eos-primary: #9daaa7;
+    --eos-primary: #7fc4ac;
+    --eos-primary-hover: #93d0ba;
+    --eos-primary-active: #63b096;
     --eos-primary-fg: #181b1b;
+    --eos-secondary-fg: var(--eos-fg);
     --eos-success-soft: rgba(21, 128, 61, 0.16);
     --eos-warning-soft: rgba(180, 83, 9, 0.16);
     --eos-danger-soft: rgba(185, 28, 28, 0.18);
@@ -397,7 +415,8 @@
 }
 
 .eos-btn--primary { background: var(--eos-primary); color: var(--eos-primary-fg); }
-.eos-btn--primary:hover:not([disabled]) { filter: brightness(0.94); }
+.eos-btn--primary:hover:not([disabled]) { background: var(--eos-primary-hover); }
+.eos-btn--primary:active:not([disabled]) { background: var(--eos-primary-active); }
 
 .eos-btn--secondary {
   background: var(--eos-surface-muted);

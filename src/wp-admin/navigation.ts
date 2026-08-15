@@ -65,6 +65,15 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "crm",
+    label: "CRM",
+    items: [
+      { slug: "eventos-crm-people", label: "Customers" },
+      { slug: "eventos-crm-segments", label: "Segments" },
+      { slug: "eventos-crm-insights", label: "Relationship Insights" },
+    ],
+  },
+  {
     id: "settings",
     label: "Settings",
     collapsible: true,

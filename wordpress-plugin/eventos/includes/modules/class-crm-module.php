@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
+use EventOS\Crm\Crm_Capabilities;
 use EventOS\Crm\Person_Backfill_Service;
 use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
@@ -38,9 +39,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Phase 1 established the schema foundation (Final Implementation
  * Specification, Section 17). Phase 2 added identity resolution and
- * historical backfill. Phase 3 adds the CRM read-model/REST layer built on
- * top of both — no menu items or new capabilities: every route here reuses
- * the `eventos_manage_crm` capability Core already registers.
+ * historical backfill. Phase 3 added the CRM read-model/REST layer. Phase 4
+ * adds the internal EventOS admin screens on top of that REST layer — still
+ * no new capability: every route and every menu item here reuses the
+ * `eventos_manage_crm` capability Core already registers, referenced via
+ * {@see Crm_Capabilities::MANAGE_CRM}.
  */
 final class Crm_Module extends Abstract_Module {
 
@@ -85,6 +88,52 @@ final class Crm_Module extends Abstract_Module {
 	 */
 	public function dependencies(): array {
 		return array( 'core', 'events' );
+	}
+
+	/**
+	 * Admin screens contributed by the module.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function menu_items(): array {
+		return array(
+			array(
+				'slug'       => 'eventos-crm-people',
+				'title'      => __( 'Customers', 'eventos' ),
+				'view'       => 'crm/people',
+				'capability' => Crm_Capabilities::MANAGE_CRM,
+			),
+			array(
+				'slug'       => 'eventos-crm-segments',
+				'title'      => __( 'Segments', 'eventos' ),
+				'view'       => 'crm/segments',
+				'capability' => Crm_Capabilities::MANAGE_CRM,
+			),
+			array(
+				'slug'       => 'eventos-crm-insights',
+				'title'      => __( 'Relationship Insights', 'eventos' ),
+				'view'       => 'crm/insights',
+				'capability' => Crm_Capabilities::MANAGE_CRM,
+			),
+		);
+	}
+
+	/**
+	 * Add the module's screens to the EventOS admin menu.
+	 *
+	 * @param array<string, array<string, mixed>> $pages Existing pages.
+	 * @return array<string, array<string, mixed>>
+	 */
+	public function register_admin_pages( array $pages ): array {
+		foreach ( $this->menu_items() as $item ) {
+			$pages[ (string) $item['slug'] ] = array(
+				'title'      => (string) $item['title'],
+				'view'       => (string) $item['view'],
+				'capability' => (string) $item['capability'],
+			);
+		}
+
+		return $pages;
 	}
 
 	/**
@@ -149,6 +198,7 @@ final class Crm_Module extends Abstract_Module {
 		Person_Backfill_Service::init();
 
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
+		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 	}
 
 	/**

@@ -1494,3 +1494,262 @@ export const wcApi = {
   // ── Log export ────────────────────────────────────────────────────────
   exportLog: () => `${config().restUrl}woocommerce/log/export?_wpnonce=${config().nonce}`,
 };
+
+/* ------------------------------------------------------------------------ */
+/* CRM / permanent Person                                                    */
+/* ------------------------------------------------------------------------ */
+
+export interface PersonSummary {
+  person_id: number;
+  display_name: string;
+  primary_email: string;
+  primary_phone: string;
+  first_event_id: number;
+  last_event_id: number;
+  total_events_attended: number;
+  total_tickets_purchased: number;
+  total_spend: number;
+  vip_purchase_count: number;
+  last_attendance_at: string | null;
+  last_purchase_at: string | null;
+}
+
+export interface PersonListParams {
+  q?: string;
+  wc_customer_id?: number;
+  person_id?: number;
+  page?: number;
+  per_page?: number;
+}
+
+export interface PersonIdentitySignal {
+  id: number;
+  person_id: number;
+  type: string;
+  value: string;
+  confidence: string;
+  created_at: string;
+}
+
+export interface PersonTag {
+  id: number;
+  person_id: number;
+  tag: string;
+  created_at: string;
+}
+
+export interface PersonNote {
+  id: number;
+  person_id: number;
+  author_user_id: number;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface PersonConsent {
+  id: number;
+  person_id: number;
+  channel: string;
+  granted_at: string | null;
+  source: string;
+  revoked_at: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface SegmentRecord {
+  id: number;
+  name: string;
+  slug: string;
+  rule_config: Record<string, unknown>;
+  archived: boolean;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+  /** Only present when read via a Person's own segment membership. */
+  computed_at?: string;
+}
+
+export interface SegmentMember {
+  person_id: number;
+  display_name: string;
+  primary_email: string;
+  computed_at: string;
+}
+
+/**
+ * A relationship-timeline entry. Stored entries (person_created,
+ * identity_attached) carry id/person_id/created_at; entries derived live
+ * from tickets/orders/tags/notes/consent at read time do not — see
+ * Person_Timeline_Service::relationship_history() — so those fields are
+ * optional here rather than faked.
+ */
+export interface TimelineEntry {
+  id?: number;
+  person_id?: number;
+  type: string;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+  created_at?: string;
+}
+
+export interface PersonEventHistoryEntry {
+  event_id: number;
+  event_title: string;
+  starts_at: string | null;
+  tickets: number;
+  attended: boolean;
+}
+
+export interface PersonProfile {
+  identity: {
+    person_id: number;
+    display_name: string;
+    first_name: string;
+    last_name: string;
+    primary_email: string;
+    primary_phone: string;
+    avatar_url: string;
+    location: string;
+    date_of_birth: string | null;
+  };
+  relationship_metrics: {
+    first_interaction: string;
+    first_event_id: number;
+    last_event_id: number;
+    total_events_attended: number;
+    total_tickets_purchased: number;
+    total_spend: number;
+    avg_order_value: number;
+    avg_ticket_value: number;
+    vip_purchase_count: number;
+    complimentary_count: number;
+    refund_count: number;
+    cancellation_count: number;
+    last_purchase_at: string | null;
+    last_attendance_at: string | null;
+    attendance_rate: number | null;
+  };
+  identity_signals: PersonIdentitySignal[];
+  tags: PersonTag[];
+  notes: PersonNote[];
+  consents: PersonConsent[];
+  segments: SegmentRecord[];
+  event_history: PersonEventHistoryEntry[];
+  relationship_timeline: TimelineEntry[];
+}
+
+export interface EventPersonEntry {
+  person_id: number | null;
+  display_name: string;
+  guest_id: number;
+  ticket_id: number;
+  ticket_number: string;
+  ticket_type_name: string;
+  tier: string;
+  ticket_status: string;
+  wc_order_id: number;
+  checked_in: boolean;
+  checked_in_at: string | null;
+  purchaser_context: { wc_customer_id: number; email: string };
+}
+
+export interface RelationshipInsights {
+  total_known_people: number;
+  purchased_count: number;
+  attended_count: number;
+  repeat_customer_count: number;
+  repeat_customer_definition: string;
+  known_revenue: number;
+  top_relationships: Array<{
+    person_id: number;
+    display_name: string;
+    primary_email: string;
+    total_spend: number;
+    total_events_attended: number;
+  }>;
+  lapsed_customers: { available: false; reason: string };
+}
+
+export const crmApi = {
+  // ── Insights ──────────────────────────────────────────────────────────
+  insights: () => unwrap<RelationshipInsights>("crm/insights"),
+
+  // ── Persons ───────────────────────────────────────────────────────────
+  persons: (params: PersonListParams = {}) =>
+    unwrapCollection<PersonSummary>(
+      `crm/persons${query(params as Record<string, string | number | undefined>)}`,
+    ),
+  person: (id: number) => unwrap<PersonProfile>(`crm/persons/${id}`),
+
+  // ── Tags ──────────────────────────────────────────────────────────────
+  tags: (personId: number) => unwrap<{ tags: PersonTag[] }>(`crm/persons/${personId}/tags`),
+  attachTag: (personId: number, tag: string) =>
+    unwrap<{ tag: PersonTag }>(`crm/persons/${personId}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tag }),
+    }),
+  detachTag: (personId: number, tag: string) =>
+    unwrap<{ deleted: boolean }>(`crm/persons/${personId}/tags/${encodeURIComponent(tag)}`, {
+      method: "DELETE",
+    }),
+
+  // ── Notes ─────────────────────────────────────────────────────────────
+  notes: (personId: number) => unwrap<{ notes: PersonNote[] }>(`crm/persons/${personId}/notes`),
+  createNote: (personId: number, body: string) =>
+    unwrap<{ note: PersonNote }>(`crm/persons/${personId}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+
+  // ── Consent ───────────────────────────────────────────────────────────
+  consents: (personId: number) =>
+    unwrap<{ consents: PersonConsent[] }>(`crm/persons/${personId}/consents`),
+  grantConsent: (personId: number, channel: string, source?: string) =>
+    unwrap<{ consent: PersonConsent }>(`crm/persons/${personId}/consents`, {
+      method: "POST",
+      body: JSON.stringify({ channel, source }),
+    }),
+  revokeConsent: (personId: number, channel: string) =>
+    unwrap<{ revoked: boolean }>(
+      `crm/persons/${personId}/consents/${encodeURIComponent(channel)}`,
+      { method: "DELETE" },
+    ),
+
+  // ── Segments ──────────────────────────────────────────────────────────
+  segments: (includeArchived = false) =>
+    unwrap<{ segments: SegmentRecord[] }>(
+      `crm/segments${includeArchived ? "?include_archived=1" : ""}`,
+    ),
+  createSegment: (payload: {
+    name: string;
+    slug?: string;
+    rule_config?: Record<string, unknown>;
+  }) => unwrap<SegmentRecord>("crm/segments", { method: "POST", body: JSON.stringify(payload) }),
+  updateSegment: (
+    id: number,
+    payload: Partial<{ name: string; slug: string; rule_config: Record<string, unknown> }>,
+  ) =>
+    unwrap<SegmentRecord>(`crm/segments/${id}`, { method: "POST", body: JSON.stringify(payload) }),
+  archiveSegment: (id: number) => unwrap<SegmentRecord>(`crm/segments/${id}`, { method: "DELETE" }),
+  segmentMembers: (id: number, page = 1, perPage = 20) =>
+    unwrapCollection<SegmentMember>(
+      `crm/segments/${id}/members${query({ page, per_page: perPage })}`,
+    ),
+  attachSegmentMember: (segmentId: number, personId: number) =>
+    unwrap<{ attached: boolean }>(`crm/segments/${segmentId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ person_id: personId }),
+    }),
+  detachSegmentMember: (segmentId: number, personId: number) =>
+    unwrap<{ detached: boolean }>(`crm/segments/${segmentId}/members/${personId}`, {
+      method: "DELETE",
+    }),
+
+  // ── Event-scoped view ─────────────────────────────────────────────────
+  eventPersons: (eventId: number, page = 1, perPage = 20) =>
+    unwrapCollection<EventPersonEntry>(
+      `events/${eventId}/crm/persons${query({ page, per_page: perPage })}`,
+    ),
+};

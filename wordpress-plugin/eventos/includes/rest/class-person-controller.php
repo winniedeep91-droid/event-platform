@@ -100,6 +100,13 @@ final class Person_Controller {
 
 		return array(
 			array(
+				'route'      => '/crm/insights',
+				'methods'    => 'GET',
+				'capability' => $manage,
+				'callback'   => array( $this, 'insights' ),
+				'summary'    => __( 'Brand-wide relationship insights.', 'eventos' ),
+			),
+			array(
 				'route'      => '/crm/persons',
 				'methods'    => 'GET',
 				'capability' => $manage,
@@ -256,6 +263,15 @@ final class Person_Controller {
 		);
 
 		return Rest_Response::collection( $result['items'], $result['total'], $result['page'], $result['per_page'] );
+	}
+
+	/**
+	 * Brand-wide relationship insights.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function insights(): array {
+		return $this->service->insights();
 	}
 
 	/**

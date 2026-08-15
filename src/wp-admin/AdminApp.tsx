@@ -30,6 +30,7 @@ import {
   WcDiagnosticsView,
   SynchronisationView,
 } from "./views/woocommerce";
+import { PeopleListView, PersonProfileView, SegmentsView, InsightsView } from "./views/crm";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { Drawer } from "./ui";
@@ -105,6 +106,19 @@ export function AdminApp({ view }: { view: string }) {
     content = <WcDiagnosticsView />;
   } else if (view === "wc-sync") {
     content = <SynchronisationView />;
+
+    // ── CRM module ─────────────────────────────────────────────────────────
+  } else if (view === "crm/people") {
+    const personParam = queryParam("person");
+    content = personParam ? (
+      <PersonProfileView personId={parseInt(personParam, 10)} />
+    ) : (
+      <PeopleListView />
+    );
+  } else if (view === "crm/segments") {
+    content = <SegmentsView />;
+  } else if (view === "crm/insights") {
+    content = <InsightsView />;
 
     // ── Settings ────────────────────────────────────────────────────────────
   } else if (view === "settings/team") {

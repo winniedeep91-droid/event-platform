@@ -329,6 +329,73 @@ final class Person_Service {
 	}
 
 	/**
+	 * Brand-wide relationship insights — aggregate counts across every
+	 * known Person. Every figure is a direct SQL aggregate over
+	 * `eventos_persons`; nothing here is estimated or inferred.
+	 *
+	 * "Lapsed customers" is deliberately absent as a number. No lapsed
+	 * threshold (e.g. "no purchase in N days") has been defined or approved
+	 * anywhere in this codebase — inventing one here would present an
+	 * editorial choice as a calculated fact. The response says so
+	 * explicitly rather than silently omitting the question or guessing a
+	 * cutoff.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function insights(): array {
+		global $wpdb;
+
+		$table = Person_Schema::persons();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$totals = $wpdb->get_row(
+			"SELECT
+				COUNT(*) AS total_known,
+				SUM(CASE WHEN total_tickets_purchased > 0 THEN 1 ELSE 0 END) AS purchased,
+				SUM(CASE WHEN total_events_attended > 0 THEN 1 ELSE 0 END) AS attended,
+				SUM(CASE WHEN total_tickets_purchased >= 2 THEN 1 ELSE 0 END) AS repeat_customers,
+				SUM(total_spend) AS known_revenue
+			FROM {$table}",
+			ARRAY_A
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$top = $wpdb->get_results(
+			"SELECT id, display_name, primary_email, total_spend, total_events_attended
+			FROM {$table}
+			WHERE total_spend > 0
+			ORDER BY total_spend DESC
+			LIMIT 10",
+			ARRAY_A
+		);
+
+		return array(
+			'total_known_people'         => (int) ( $totals['total_known'] ?? 0 ),
+			'purchased_count'            => (int) ( $totals['purchased'] ?? 0 ),
+			'attended_count'             => (int) ( $totals['attended'] ?? 0 ),
+			'repeat_customer_count'      => (int) ( $totals['repeat_customers'] ?? 0 ),
+			'repeat_customer_definition' => __( '2 or more tickets purchased.', 'eventos' ),
+			'known_revenue'              => (float) ( $totals['known_revenue'] ?? 0 ),
+			'top_relationships'          => array_map(
+				static function ( array $row ): array {
+					return array(
+						'person_id'             => (int) $row['id'],
+						'display_name'          => (string) $row['display_name'],
+						'primary_email'         => (string) $row['primary_email'],
+						'total_spend'           => (float) $row['total_spend'],
+						'total_events_attended' => (int) $row['total_events_attended'],
+					);
+				},
+				(array) $top
+			),
+			'lapsed_customers'           => array(
+				'available' => false,
+				'reason'    => __( 'Not available yet — no lapsed threshold has been defined.', 'eventos' ),
+			),
+		);
+	}
+
+	/**
 	 * Distinct events reachable through a Person's identities, each with
 	 * that Person's ticket count and whether they attended.
 	 *
@@ -478,6 +545,8 @@ final class Person_Service {
 			'total_tickets_purchased' => $person['total_tickets_purchased'],
 			'total_spend'             => $person['total_spend'],
 			'vip_purchase_count'      => $person['vip_purchase_count'],
+			'last_attendance_at'      => $person['last_attendance_at'],
+			'last_purchase_at'        => $person['last_purchase_at'],
 		);
 	}
 
@@ -520,6 +589,8 @@ final class Person_Service {
 			'total_tickets_purchased' => (int) $row['total_tickets_purchased'],
 			'total_spend'             => (float) $row['total_spend'],
 			'vip_purchase_count'      => (int) $row['vip_purchase_count'],
+			'last_attendance_at'      => $row['last_attendance_at'],
+			'last_purchase_at'        => $row['last_purchase_at'],
 		);
 	}
 }

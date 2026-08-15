@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Crm;
 
 use EventOS\Events\Event_Schema;
+use WC_Order;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -21,28 +22,51 @@ if ( ! defined( 'ABSPATH' ) ) {
  * is the one place that computes them, so a later phase never has to
  * scatter that arithmetic across the UI or REST layer.
  *
- * Deliberately limited this phase to what `eventos_tickets`/
- * `eventos_checkins` can answer directly — total_tickets_purchased,
- * total_events_attended, first_event_id, last_event_id,
- * last_attendance_at — reached through whichever identities are currently
+ * Two data sources, reached through whichever identities are currently
  * attached to the Person (which, unlike the single wc_customer_id + single
  * email that {@see \EventOS\Events\Guest_Repository::attendance_history()}
- * takes, can be several of each over a Person's lifetime).
+ * takes, can be several of each over a Person's lifetime):
  *
- * total_spend, avg_order_value/avg_ticket_value, vip_purchase_count,
- * complimentary_count, refund_count, cancellation_count and
- * last_purchase_at all need a live WooCommerce order lookup per ticket
- * (price, refund status, ticket-type VIP flag) that Phase 2 does not build.
- * This establishes the boundary those calculations plug into later — it
- * does not guess at them with a placeholder now.
+ * - `eventos_tickets`/`eventos_ticket_types` for total_tickets_purchased,
+ *   total_events_attended, first_event_id, last_event_id,
+ *   last_attendance_at, vip_purchase_count (ticket_types.tier = 'vip', a
+ *   real structured column — see Ticket_Type_Repository::tiers()) and
+ *   complimentary_count (tickets.is_complimentary, the per-ticket flag —
+ *   deliberately not tier = 'complimentary', which classifies the ticket
+ *   *type*, not whether this specific ticket was actually issued free).
  *
- * Not invoked anywhere in Phase 2 yet. Your Section 6 scope list is Person
- * identity/resolution/backfill only; recomputing metrics as a byproduct of
- * backfill isn't in it, so this is available for a later phase to call
- * (e.g. from {@see \EventOS\Job_Queue} once metric recompute is actually
- * wired to a trigger) rather than run automatically today.
+ * - Live WooCommerce orders (`wc_get_orders()`) for total_spend,
+ *   avg_order_value, avg_ticket_value and last_purchase_at. total_spend is
+ *   the sum of `$order->get_total()` for every order — across every
+ *   wc_customer_id AND every email identity the Person has, de-duplicated
+ *   by order ID — in a paid status ('completed', 'processing', 'on-hold'),
+ *   exactly the source of truth and status set
+ *   {@see \EventOS\Rest\Woocommerce_Controller::customer_order_stats()}
+ *   already established, generalized across every identity rather than one
+ *   signal. avg_ticket_value = total_spend ÷ total_tickets_purchased is a
+ *   documented APPROXIMATION, not an exact per-ticket price: no field
+ *   anywhere in the schema records what was actually paid for one specific
+ *   ticket (ticket_types.price is the list price, not the paid price after
+ *   discounts/fees/tax), so this is order revenue spread evenly across
+ *   tickets issued, not each ticket's individual sale price.
+ *
+ * refund_count and cancellation_count are deliberately NOT populated here.
+ * Both {@see \EventOS\Events\Ticket_Fulfillment::handle_refunded()} and the
+ * cancelled/failed order path in the same class collapse to the same
+ * `tickets.status = 'cancelled'` — there is no independent field
+ * distinguishing "this ticket was refunded" from "this order was
+ * cancelled/failed". Guessing a split here risks double-counting or
+ * misclassifying, so both columns are left at their Phase 1 default (0)
+ * until the underlying ticket lifecycle can actually support the
+ * distinction — a future data-model phase, not this one.
  */
 final class Person_Metrics_Service {
+
+	/**
+	 * Order statuses counted as revenue — identical to
+	 * Woocommerce_Controller::customer_order_stats()'s own list.
+	 */
+	private const PAID_STATUSES = array( 'completed', 'processing', 'on-hold' );
 
 	/**
 	 * Person repository.
@@ -76,8 +100,6 @@ final class Person_Metrics_Service {
 	 * @return array<string, mixed>|null Updated Person row, null if not found.
 	 */
 	public function recompute( int $person_id ): ?array {
-		global $wpdb;
-
 		$person = $this->persons->find_by_id( $person_id );
 
 		if ( null === $person ) {
@@ -91,8 +113,25 @@ final class Person_Metrics_Service {
 			return $person;
 		}
 
-		$tickets = Event_Schema::tickets();
-		$guests  = Event_Schema::guests();
+		$ticket_metrics   = $this->ticket_metrics( $wc_customer_ids, $emails );
+		$financial_metrics = $this->financial_metrics( $wc_customer_ids, $emails, $ticket_metrics['total_tickets_purchased'] );
+
+		return $this->persons->update( $person_id, array_merge( $ticket_metrics, $financial_metrics ) );
+	}
+
+	/**
+	 * Ticket/attendance-derived metrics.
+	 *
+	 * @param int[]    $wc_customer_ids WooCommerce customer IDs attached to the Person.
+	 * @param string[] $emails          Normalized emails attached to the Person.
+	 * @return array<string, mixed>
+	 */
+	private function ticket_metrics( array $wc_customer_ids, array $emails ): array {
+		global $wpdb;
+
+		$tickets      = Event_Schema::tickets();
+		$guests       = Event_Schema::guests();
+		$ticket_types = Event_Schema::ticket_types();
 
 		$where  = array();
 		$params = array();
@@ -112,18 +151,21 @@ final class Person_Metrics_Service {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT t.event_id, t.checked_in, t.checked_in_at, t.created_at
+				"SELECT t.event_id, t.checked_in, t.checked_in_at, t.created_at, t.is_complimentary, tt.tier
 				FROM {$tickets} t
 				LEFT JOIN {$guests} g ON g.id = t.guest_id
+				LEFT JOIN {$ticket_types} tt ON tt.id = t.ticket_type_id
 				WHERE t.status != 'cancelled' AND (" . implode( ' OR ', $where ) . ')',
 				$params
 			),
 			ARRAY_A
 		);
 
-		$attended_events    = array();
+		$attended_events      = array();
 		$events_by_first_seen = array();
-		$last_attendance_at  = null;
+		$last_attendance_at   = null;
+		$vip_count            = 0;
+		$complimentary_count  = 0;
 
 		foreach ( (array) $rows as $row ) {
 			$event_id = (int) $row['event_id'];
@@ -139,20 +181,117 @@ final class Person_Metrics_Service {
 					$last_attendance_at = $row['checked_in_at'];
 				}
 			}
+
+			if ( 'vip' === (string) $row['tier'] ) {
+				++$vip_count;
+			}
+
+			if ( 1 === (int) $row['is_complimentary'] ) {
+				++$complimentary_count;
+			}
 		}
 
 		asort( $events_by_first_seen );
 		$ordered_event_ids = array_keys( $events_by_first_seen );
 
-		return $this->persons->update(
-			$person_id,
-			array(
-				'total_tickets_purchased' => count( $rows ),
-				'total_events_attended'   => count( $attended_events ),
-				'first_event_id'          => $ordered_event_ids ? (int) $ordered_event_ids[0] : 0,
-				'last_event_id'           => $ordered_event_ids ? (int) $ordered_event_ids[ count( $ordered_event_ids ) - 1 ] : 0,
-				'last_attendance_at'      => $last_attendance_at,
-			)
+		return array(
+			'total_tickets_purchased' => count( $rows ),
+			'total_events_attended'   => count( $attended_events ),
+			'first_event_id'          => $ordered_event_ids ? (int) $ordered_event_ids[0] : 0,
+			'last_event_id'           => $ordered_event_ids ? (int) $ordered_event_ids[ count( $ordered_event_ids ) - 1 ] : 0,
+			'last_attendance_at'      => $last_attendance_at,
+			'vip_purchase_count'      => $vip_count,
+			'complimentary_count'     => $complimentary_count,
+		);
+	}
+
+	/**
+	 * WooCommerce-order-derived financial metrics. See the class docblock
+	 * for the source-of-truth and de-duplication rules.
+	 *
+	 * @param int[]    $wc_customer_ids     WooCommerce customer IDs attached to the Person.
+	 * @param string[] $emails              Normalized emails attached to the Person.
+	 * @param int      $total_tickets       Already-computed total_tickets_purchased, for avg_ticket_value.
+	 * @return array<string, mixed>
+	 */
+	private function financial_metrics( array $wc_customer_ids, array $emails, int $total_tickets ): array {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return array(
+				'total_spend'      => 0.0,
+				'avg_order_value'  => 0.0,
+				'avg_ticket_value' => 0.0,
+				'last_purchase_at' => null,
+			);
+		}
+
+		$orders_by_id = array();
+
+		foreach ( $wc_customer_ids as $customer_id ) {
+			$customer_id = (int) $customer_id;
+
+			if ( $customer_id <= 0 ) {
+				continue;
+			}
+
+			$orders = wc_get_orders(
+				array(
+					'customer_id' => $customer_id,
+					'limit'       => -1,
+					'return'      => 'objects',
+				)
+			);
+
+			foreach ( $orders as $order ) {
+				if ( $order instanceof WC_Order ) {
+					$orders_by_id[ $order->get_id() ] = $order;
+				}
+			}
+		}
+
+		foreach ( $emails as $email ) {
+			if ( '' === $email ) {
+				continue;
+			}
+
+			$orders = wc_get_orders(
+				array(
+					'billing_email' => $email,
+					'limit'         => -1,
+					'return'        => 'objects',
+				)
+			);
+
+			foreach ( $orders as $order ) {
+				if ( $order instanceof WC_Order ) {
+					$orders_by_id[ $order->get_id() ] = $order;
+				}
+			}
+		}
+
+		$total_spend      = 0.0;
+		$order_count      = 0;
+		$last_purchase_at = null;
+
+		foreach ( $orders_by_id as $order ) {
+			if ( ! in_array( $order->get_status(), self::PAID_STATUSES, true ) ) {
+				continue;
+			}
+
+			$total_spend += (float) $order->get_total();
+			++$order_count;
+
+			$created = $order->get_date_created();
+
+			if ( $created && ( null === $last_purchase_at || $created->getTimestamp() > strtotime( (string) $last_purchase_at ) ) ) {
+				$last_purchase_at = $created->date( 'Y-m-d H:i:s' );
+			}
+		}
+
+		return array(
+			'total_spend'      => $total_spend,
+			'avg_order_value'  => $order_count > 0 ? round( $total_spend / $order_count, 2 ) : 0.0,
+			'avg_ticket_value' => $total_tickets > 0 ? round( $total_spend / $total_tickets, 2 ) : 0.0,
+			'last_purchase_at' => $last_purchase_at,
 		);
 	}
 

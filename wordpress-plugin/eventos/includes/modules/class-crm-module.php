@@ -11,7 +11,17 @@ namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
 use EventOS\Crm\Person_Backfill_Service;
+use EventOS\Crm\Person_Consent_Repository;
+use EventOS\Crm\Person_Identity_Repository;
+use EventOS\Crm\Person_Note_Repository;
+use EventOS\Crm\Person_Repository;
 use EventOS\Crm\Person_Schema;
+use EventOS\Crm\Person_Service;
+use EventOS\Crm\Person_Tag_Repository;
+use EventOS\Crm\Person_Timeline_Service;
+use EventOS\Crm\Segment_Repository;
+use EventOS\Rest\Person_Controller;
+use EventOS\Rest\Rest_Registry;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -26,11 +36,20 @@ if ( ! defined( 'ABSPATH' ) ) {
  * operational layer (guests, tickets, checkins) stays owned by the Events
  * module and is untouched by this one.
  *
- * Phase 1 establishes only the schema foundation described in the Final
- * Implementation Specification, Section 17: no REST endpoints, menu items or
- * capabilities are declared yet, and no existing table is modified.
+ * Phase 1 established the schema foundation (Final Implementation
+ * Specification, Section 17). Phase 2 added identity resolution and
+ * historical backfill. Phase 3 adds the CRM read-model/REST layer built on
+ * top of both — no menu items or new capabilities: every route here reuses
+ * the `eventos_manage_crm` capability Core already registers.
  */
 final class Crm_Module extends Abstract_Module {
+
+	/**
+	 * Read-model service.
+	 *
+	 * @var Person_Service|null
+	 */
+	private ?Person_Service $person_service = null;
 
 	/**
 	 * Module slug.
@@ -66,6 +85,27 @@ final class Crm_Module extends Abstract_Module {
 	 */
 	public function dependencies(): array {
 		return array( 'core', 'events' );
+	}
+
+	/**
+	 * Read-model service accessor.
+	 *
+	 * @return Person_Service
+	 */
+	public function person_service(): Person_Service {
+		if ( null === $this->person_service ) {
+			$this->person_service = new Person_Service(
+				new Person_Repository(),
+				new Person_Identity_Repository(),
+				new Person_Tag_Repository(),
+				new Person_Note_Repository(),
+				new Person_Consent_Repository(),
+				new Segment_Repository(),
+				new Person_Timeline_Service()
+			);
+		}
+
+		return $this->person_service;
 	}
 
 	/**
@@ -107,5 +147,31 @@ final class Crm_Module extends Abstract_Module {
 		Person_Schema::maybe_install();
 
 		Person_Backfill_Service::init();
+
+		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
+	}
+
+	/**
+	 * Register the CRM REST routes.
+	 *
+	 * Hooked to `eventos_register_rest_endpoints`, which `Rest_Registry`
+	 * fires from the native `rest_api_init` hook — unlike
+	 * `eventos_register_jobs` (see Person_Backfill_Service's docblock),
+	 * this one fires on every request after every module has already
+	 * booted, so the hook-based pattern every other module's REST
+	 * controller uses (e.g. Events_Module) is safe here.
+	 *
+	 * @return void
+	 */
+	public function register_rest_endpoints(): void {
+		$controller = new Person_Controller(
+			$this->person_service(),
+			new Person_Tag_Repository(),
+			new Person_Note_Repository(),
+			new Person_Consent_Repository(),
+			new Segment_Repository()
+		);
+
+		Rest_Registry::register_many( $controller->endpoints(), $this->slug() );
 	}
 }

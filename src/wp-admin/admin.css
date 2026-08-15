@@ -134,9 +134,14 @@ body.rtl #wpfooter {
   background: var(--eos-surface-muted);
 }
 
+/* Same treatment as .eos-sidebar__group a[aria-current="page"] below — one
+   deliberate active-state language across the whole sidebar (a soft Sky
+   Blue wash plus a Cherry Red accent stripe and text), not a different
+   solid-fill colour for this one top-level link. */
 .eos-sidebar__top-link[aria-current="page"] {
-  background: var(--eos-accent);
-  color: var(--eos-fg);
+  background: var(--eos-info-soft);
+  box-shadow: inset 2px 0 0 var(--eos-primary);
+  color: var(--eos-primary);
 }
 
 .eos-sidebar__divider {
@@ -237,7 +242,7 @@ body.rtl #wpfooter {
 }
 
 .eos-sidebar__group a[aria-current="page"] {
-  background: var(--eos-surface);
+  background: var(--eos-info-soft);
   box-shadow: inset 2px 0 0 var(--eos-primary);
   color: var(--eos-primary);
   font-weight: 600;

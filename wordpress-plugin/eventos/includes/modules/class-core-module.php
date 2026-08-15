@@ -32,6 +32,7 @@ use EventOS\Rest\Invitations_Controller;
 use EventOS\Rest\Settings_Controller;
 use EventOS\Rest\Team_Controller;
 use EventOS\Security;
+use EventOS\Settings;
 use EventOS\WooCommerce;
 use WP_REST_Response;
 
@@ -81,6 +82,7 @@ final class Core_Module extends Abstract_Module {
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_providers' ) );
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_infrastructure_endpoints' ) );
 		add_filter( 'rest_pre_serve_request', array( $this, 'serve_raw_response' ), 10, 2 );
+		Settings::init();
 		WooCommerce::init();
 
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );

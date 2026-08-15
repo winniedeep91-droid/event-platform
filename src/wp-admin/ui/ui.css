@@ -49,9 +49,13 @@
   --eos-bg: #f5f5f2; /* Clean White */
   --eos-surface: #ffffff;
   --eos-surface-elevated: #ffffff; /* modals, dropdowns, popovers */
-  --eos-surface-muted: #f2efe8; /* fill within a white surface — table headers, hover */
-  --eos-border: #e6e0d3; /* 1.3:1 vs surface */
-  --eos-border-strong: #d2c7b3; /* 1.7:1 vs surface */
+  /* Neutral cool greys, not the old palette's warm tan/sand — these back
+     every secondary/outline/ghost button and every hover state in the app,
+     so a warm cast here reads as the old cream theme bleeding through no
+     matter what the brand tokens below are set to. */
+  --eos-surface-muted: #eeeeec; /* fill within a white surface — table headers, hover */
+  --eos-border: #e2e2de; /* 1.3:1 vs surface */
+  --eos-border-strong: #cfcfc9; /* 1.7:1 vs surface */
   --eos-fg: #262320;
   --eos-fg-muted: #66716f; /* 5.05:1 vs white */
   --eos-fg-inverse: #ffffff;
@@ -448,7 +452,7 @@
   text-decoration: underline;
 }
 
-.eos-btn--danger { background: var(--eos-danger); color: #fff; }
+.eos-btn--danger { background: var(--eos-danger); color: var(--eos-fg-inverse); }
 .eos-btn--danger:hover:not([disabled]) { filter: brightness(0.94); }
 
 .eos-btn-group {
@@ -553,6 +557,18 @@
   min-height: 96px;
   resize: vertical;
   line-height: 1.5;
+}
+
+/* Without this, a native <input type="color"> inherits .eos-input's
+   width:100% and text padding, which stretches the browser's small colour
+   swatch into a full-width solid block — visually indistinguishable from a
+   plain read-only colour preview, with no affordance that it's clickable.
+   Constraining it to its natural swatch size and dropping the text padding
+   restores the native "click to open a colour picker" control. */
+.eos-input[type="color"] {
+  width: 56px;
+  padding: 2px;
+  cursor: pointer;
 }
 
 .eos-select {
@@ -662,7 +678,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--eos-fg-inverse);
   box-shadow: var(--eos-shadow-sm);
   transition: transform 120ms ease;
 }

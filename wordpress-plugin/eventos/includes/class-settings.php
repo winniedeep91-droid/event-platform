@@ -27,6 +27,26 @@ final class Settings {
 	public const OPTION_PREFIX = 'eventos_settings_';
 
 	/**
+	 * Option flag: has an administrator ever explicitly saved the branding
+	 * settings group through the real save path (update_group())? This is
+	 * the only signal that distinguishes a genuine customization from a
+	 * value that was merely auto-seeded by install_defaults() at some past
+	 * activation and never touched since — only the latter is safe to
+	 * migrate forward when the code's default palette changes. Never set by
+	 * maybe_reseed_branding_colors() itself, only by an explicit save.
+	 */
+	public const BRANDING_CUSTOMIZED_OPTION = 'eventos_branding_customized';
+
+	/**
+	 * The branding fields a future default-palette migration is allowed to
+	 * touch. Logo/attachment fields and everything else on the group are
+	 * never touched by maybe_reseed_branding_colors().
+	 *
+	 * @var string[]
+	 */
+	private const BRANDING_COLOUR_FIELDS = array( 'primary_color', 'secondary_color', 'accent_color' );
+
+	/**
 	 * Cached schema.
 	 *
 	 * @var array<string, array<string, mixed>>|null
@@ -200,6 +220,65 @@ final class Settings {
 	 */
 	public static function option_name( string $group ): string {
 		return self::OPTION_PREFIX . $group;
+	}
+
+	/**
+	 * Register hooks.
+	 *
+	 * @return void
+	 */
+	public static function init(): void {
+		add_action( 'eventos_settings_updated', array( __CLASS__, 'mark_branding_customized' ) );
+		add_action( 'eventos_upgraded', array( __CLASS__, 'maybe_reseed_branding_colors' ) );
+	}
+
+	/**
+	 * Marks branding as administrator-customized the moment it is saved
+	 * through the real settings save path. This is the only place
+	 * BRANDING_CUSTOMIZED_OPTION is ever set — maybe_reseed_branding_colors()
+	 * writes the option directly and never calls update_group(), so the
+	 * migration itself can never trigger this and mark itself as a
+	 * customization.
+	 *
+	 * @param string $group Group slug that was saved.
+	 * @return void
+	 */
+	public static function mark_branding_customized( string $group ): void {
+		if ( 'branding' !== $group ) {
+			return;
+		}
+
+		update_option( self::BRANDING_CUSTOMIZED_OPTION, true );
+	}
+
+	/**
+	 * One-time-per-upgrade migration: if this installation's branding has
+	 * never been explicitly saved by an administrator, refresh only its
+	 * three colour fields to the current code defaults so a palette change
+	 * reaches installs nobody has customized. Logo/media fields and every
+	 * other branding field are left exactly as stored, and this never sets
+	 * BRANDING_CUSTOMIZED_OPTION — an install that has never been
+	 * customized must stay eligible for the next palette change too.
+	 *
+	 * @return void
+	 */
+	public static function maybe_reseed_branding_colors(): void {
+		if ( get_option( self::BRANDING_CUSTOMIZED_OPTION ) ) {
+			return;
+		}
+
+		$option_name = self::option_name( 'branding' );
+		$stored      = get_option( $option_name, array() );
+		$stored      = is_array( $stored ) ? $stored : array();
+		$defaults    = self::defaults( 'branding' );
+
+		foreach ( self::BRANDING_COLOUR_FIELDS as $field ) {
+			if ( isset( $defaults[ $field ] ) ) {
+				$stored[ $field ] = $defaults[ $field ];
+			}
+		}
+
+		update_option( $option_name, $stored );
 	}
 
 	/**

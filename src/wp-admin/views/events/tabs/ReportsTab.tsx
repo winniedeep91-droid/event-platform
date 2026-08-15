@@ -6,6 +6,7 @@ import {
   DataTable,
   Grid,
   LoadingState,
+  MiniBarChart,
   Stack,
   StatCard,
   type DataTableColumn,
@@ -23,45 +24,6 @@ function fmt(amount: number, cur: string) {
     currency: cur || "USD",
     maximumFractionDigits: 0,
   }).format(amount);
-}
-
-function MiniBarChart({
-  data,
-  valueKey,
-  labelKey,
-}: {
-  data: Record<string, unknown>[];
-  valueKey: string;
-  labelKey: string;
-}) {
-  if (!data.length) {
-    return <p className="eos-page__description">No data available.</p>;
-  }
-  const values = data.map((d) => Number(d[valueKey]) || 0);
-  const peak = Math.max(...values, 1);
-
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80 }}>
-      {data.slice(-30).map((d, i) => {
-        const val = Number(d[valueKey]) || 0;
-        const heightPct = Math.max(4, (val / peak) * 100);
-        return (
-          <div
-            key={i}
-            title={`${String(d[labelKey])}: ${String(d[valueKey])}`}
-            style={{
-              flex: 1,
-              height: `${heightPct}%`,
-              background: "var(--eos-primary)",
-              borderRadius: "2px 2px 0 0",
-              minWidth: 4,
-              opacity: 0.5 + (i / data.length) * 0.5,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
 }
 
 const TIER_TONE: Record<TicketTier, "neutral" | "primary" | "success" | "warning" | "info"> = {

@@ -10,6 +10,7 @@ export * from "./utils";
 export * from "./layout";
 export * from "./cards";
 export * from "./buttons";
+export * from "./charts";
 export * from "./forms";
 export * from "./display";
 export * from "./feedback";

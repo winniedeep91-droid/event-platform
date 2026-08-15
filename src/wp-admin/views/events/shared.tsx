@@ -40,7 +40,10 @@ export function pageUrl(
 }
 
 /** Navigates the browser to another EventOS screen. */
-export function goTo(page: EventsPage, params: Record<string, string | number | undefined> = {}): void {
+export function goTo(
+  page: EventsPage,
+  params: Record<string, string | number | undefined> = {},
+): void {
   window.location.href = pageUrl(page, params);
 }
 
@@ -102,6 +105,27 @@ export function formatDate(value: string | null | undefined): string {
   return parsed.toLocaleDateString(config().locale.replace("_", "-"), { dateStyle: "medium" });
 }
 
+/** Formats an amount in the given ISO currency code for display. */
+export function formatMoney(amount: number, currency: string): string {
+  return new Intl.NumberFormat(config().locale.replace("_", "-"), {
+    style: "currency",
+    currency: currency || "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/** Formats a Y-m-d date string as a short "15 Aug" label for chart axes/tooltips. */
+export function formatShortDate(value: string): string {
+  const parsed = new Date(`${value}T00:00:00Z`);
+
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString(config().locale.replace("_", "-"), {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 /** Converts a MySQL datetime into a value the datetime-local control accepts. */
 export function toLocalInput(value: string | null | undefined): string {
   if (!value) return "";
@@ -125,7 +149,8 @@ export function venueLabel(event: EventRecord): string {
 
 /** Visibility badge shared by the list and detail screens. */
 export function VisibilityBadge({ visibility }: { visibility: string }) {
-  const tone = visibility === "public" ? "success" : visibility === "private" ? "warning" : "neutral";
+  const tone =
+    visibility === "public" ? "success" : visibility === "private" ? "warning" : "neutral";
 
   return <Badge tone={tone}>{statusLabel(visibility)}</Badge>;
 }

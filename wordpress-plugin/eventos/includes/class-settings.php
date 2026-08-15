@@ -71,13 +71,13 @@ final class Settings {
 					'email_header_logo_id' => self::field( __( 'Email Header Logo', 'eventos' ), 'attachment', 0 ),
 					'pdf_logo_id'          => self::field( __( 'PDF Logo', 'eventos' ), 'attachment', 0 ),
 					'favicon_id'           => self::field( __( 'Favicon', 'eventos' ), 'attachment', 0 ),
-					// Defaults match the deep green / warm sand tokens the admin
+					// Defaults match the Cherry Red / Sky Blue tokens the admin
 					// UI ships with (src/wp-admin/ui/ui.css: --eos-primary/
 					// --eos-secondary/--eos-accent) so a fresh install's branding
 					// preview matches what the shell actually looks like.
-					'primary_color'        => self::field( __( 'Primary Colour', 'eventos' ), 'color', '#004437' ),
-					'secondary_color'      => self::field( __( 'Secondary Colour', 'eventos' ), 'color', '#00332a' ),
-					'accent_color'         => self::field( __( 'Accent Colour', 'eventos' ), 'color', '#d5b38e' ),
+					'primary_color'        => self::field( __( 'Primary Colour', 'eventos' ), 'color', '#be0015' ),
+					'secondary_color'      => self::field( __( 'Secondary Colour', 'eventos' ), 'color', '#92e1ff' ),
+					'accent_color'         => self::field( __( 'Accent Colour', 'eventos' ), 'color', '#92e1ff' ),
 				),
 			),
 			'regional' => array(

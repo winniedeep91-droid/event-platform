@@ -237,7 +237,7 @@ export function EventsListView() {
 
   return (
     <PageLayout
-      title="All events"
+      title="My Events"
       description="Every event on this installation, across all lifecycle states."
       actions={
         <Button variant="primary" onClick={() => goTo(EVENTS_PAGES.list, { action: "new" })}>

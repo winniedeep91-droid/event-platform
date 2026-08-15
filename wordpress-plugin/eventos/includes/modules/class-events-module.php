@@ -175,7 +175,7 @@ final class Events_Module extends Abstract_Module {
 		return array(
 			array(
 				'slug'       => 'eventos-events-list',
-				'title'      => __( 'All Events', 'eventos' ),
+				'title'      => __( 'My Events', 'eventos' ),
 				'view'       => 'events/list',
 				'capability' => Event_Capabilities::VIEW_EVENTS,
 			),

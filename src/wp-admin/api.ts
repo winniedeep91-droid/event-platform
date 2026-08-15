@@ -415,6 +415,44 @@ export interface EventTerm {
   created_at: string;
 }
 
+export type DashboardPeriod = "7d" | "30d" | "90d" | "year";
+
+/** Brand-wide, all-time performance totals — the dashboard's KPI cards. */
+export interface BrandPerformanceSummary {
+  currency: string;
+  total_revenue: number;
+  tickets_sold: number;
+  attendance: number;
+  complimentary: number;
+  orders: number;
+}
+
+/** Day-bucketed brand performance for the selected period — the dashboard's charts. */
+export interface BrandPerformanceSeries {
+  period: DashboardPeriod;
+  from: string;
+  to: string;
+  currency: string;
+  revenue_by_day: Array<{ date: string; revenue: number; orders: number }>;
+  tickets_by_day: Array<{ date: string; tickets: number }>;
+}
+
+/** One My Events table row — an event record enriched with its performance. */
+export interface DashboardEventSummary extends EventRecord {
+  tickets_sold: number;
+  checked_in: number;
+  revenue: number;
+}
+
+/** The next upcoming event's full per-event report — powers the Next Event card. */
+export interface NextEventReport extends EventReportPayload {
+  event_id: number;
+  title: string;
+  starts_at: string | null;
+  venue_name: string;
+  status: string;
+}
+
 export interface EventsDashboardPayload {
   counts: Record<string, number>;
   total: number;
@@ -432,6 +470,11 @@ export interface EventsDashboardPayload {
     entity_type?: string;
     entity_id?: number;
   }>;
+  /** Additive commercial-performance fields — see Brand_Report_Builder. */
+  brand: BrandPerformanceSummary;
+  brand_series: BrandPerformanceSeries;
+  next_event: NextEventReport | null;
+  my_events: DashboardEventSummary[];
 }
 
 export interface EventFormOptions {
@@ -757,7 +800,8 @@ export interface ArtistListParams {
 export type EventPayload = Record<string, unknown>;
 
 export const eventsApi = {
-  dashboard: () => unwrap<EventsDashboardPayload>("events/dashboard"),
+  dashboard: (period?: DashboardPeriod) =>
+    unwrap<EventsDashboardPayload>(`events/dashboard${query({ period })}`),
   options: () => unwrap<EventFormOptions>("events/options"),
   list: (params: EventListParams) => unwrapCollection<EventRecord>(`events${query(params)}`),
   calendar: (from: string, to: string) =>

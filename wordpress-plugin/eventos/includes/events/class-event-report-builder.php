@@ -44,13 +44,6 @@ final class Event_Report_Builder {
 	private Ticket_Order_Resolver $orders;
 
 	/**
-	 * Order statuses treated as paid revenue.
-	 *
-	 * @var string[]
-	 */
-	private const PAID_STATUSES = array( 'completed', 'processing', 'on-hold' );
-
-	/**
 	 * Constructor.
 	 *
 	 * @param Ticket_Type_Repository $ticket_types Ticket type repository.
@@ -98,7 +91,7 @@ final class Event_Report_Builder {
 		foreach ( $order_rows as $order ) {
 			$order_refund_amount = array_sum( array_column( $order['refunds'], 'amount' ) );
 
-			if ( in_array( $order['status'], self::PAID_STATUSES, true ) ) {
+			if ( in_array( $order['status'], Ticket_Order_Resolver::PAID_STATUSES, true ) ) {
 				++$paid_orders;
 				$gross += (float) $order['total'];
 

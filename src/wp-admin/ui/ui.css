@@ -29,19 +29,24 @@
   --eos-text-xl: 22px;
   --eos-text-2xl: 28px;
 
-  /* Brand palette: EventOS Deep Green (#004437) is the primary brand/action
-     colour; Warm Sand (#D5B38E) is a secondary/accent colour for supporting
-     highlights and must never become the dominant background. Page and
-     surface tones are a neutral warm off-white — not sand — so the two
-     brand colours stay distinctive accents rather than tinting every panel.
-     Semantic status colours stay conventional (green/amber/red/blue) since
-     they carry meaning independent of the brand accent, and are kept
-     visually distinct from the primary green (deep, near-black teal-green
-     vs. a brighter, clearly different mid-tone success green). Every
-     pairing below is contrast-checked (WCAG relative luminance) against the
-     surface it's meant to sit on; see the derivation notes next to each
-     token. */
-  --eos-bg: #f7f5f0; /* neutral warm off-white — breathing room, not sand */
+  /* Brand palette: Cherry Red (#BE0015) is the primary brand/action colour —
+     primary CTAs, selected/active states, high-priority emphasis. Sky Blue
+     (#92E1FF) is a light, restrained secondary/informational accent used
+     as a fill (never as text on white — it's too pale) for supporting
+     highlights, analytics and relationship/engagement information; it
+     doubles as --eos-accent so the app has one supporting hue, not several.
+     Clean White (#F5F5F2) is the page background; cards/tables/panels stay
+     white/near-white surfaces on top of it. Neither brand colour is meant
+     to dominate — most of the UI stays white/neutral, per the "clean,
+     modern, restrained" direction. Semantic status colours stay
+     conventional (green/amber/red/blue) since they carry meaning
+     independent of the brand accent; --eos-info is deliberately a deeper,
+     more saturated blue than the raw Sky Blue hex so it stays legible as
+     text on its soft background — --eos-info-soft is the pale Sky-Blue-
+     family tint that pairing needs. Every pairing below is contrast-checked
+     (WCAG relative luminance) against the surface it's meant to sit on; see
+     the derivation notes next to each token. */
+  --eos-bg: #f5f5f2; /* Clean White */
   --eos-surface: #ffffff;
   --eos-surface-elevated: #ffffff; /* modals, dropdowns, popovers */
   --eos-surface-muted: #f2efe8; /* fill within a white surface — table headers, hover */
@@ -51,13 +56,13 @@
   --eos-fg-muted: #66716f; /* 5.05:1 vs white */
   --eos-fg-inverse: #ffffff;
 
-  --eos-primary: var(--eventos-primary, #004437); /* deep green, 11.2:1 vs white */
-  --eos-primary-hover: var(--eventos-primary-hover, #0b5c49); /* 7.9:1 vs white */
-  --eos-primary-active: var(--eventos-primary-active, #00332a); /* 13.9:1 vs white */
+  --eos-primary: var(--eventos-primary, #be0015); /* Cherry Red, 6.6:1 vs white */
+  --eos-primary-hover: var(--eventos-primary-hover, #d4142e); /* brighter on hover, still ~5.6:1 */
+  --eos-primary-active: var(--eventos-primary-active, #8f0010); /* darker on press, ~8.9:1 */
   --eos-primary-fg: #ffffff;
-  --eos-secondary: var(--eventos-secondary, #00332a); /* deep green, secondary brand tone */
+  --eos-secondary: var(--eventos-secondary, #92e1ff); /* Sky Blue, fills only */
   --eos-secondary-fg: var(--eos-fg);
-  --eos-accent: var(--eventos-accent, #d5b38e); /* warm sand, fills only — 7.9:1 with --eos-fg on top */
+  --eos-accent: var(--eventos-accent, #92e1ff); /* Sky Blue, fills only — same hue as secondary, one supporting colour */
 
   --eos-success: #15803d;
   --eos-success-soft: #ecfdf5;
@@ -65,8 +70,8 @@
   --eos-warning-soft: #fffbeb;
   --eos-danger: #b91c1c;
   --eos-danger-soft: #fef2f2;
-  --eos-info: #1d4ed8;
-  --eos-info-soft: #eff6ff;
+  --eos-info: #0369a1; /* deep sky-blue, legible as text — 6.4:1 vs its own soft background */
+  --eos-info-soft: #e4f7ff; /* pale Sky Blue tint */
 
   --eos-shadow-sm: 0 1px 2px rgba(38, 35, 32, 0.06);
   --eos-shadow: 0 8px 24px rgba(38, 35, 32, 0.08);
@@ -89,19 +94,19 @@
   --eos-border-strong: #565958;
   --eos-fg: #fef4ed; /* warm off-white, keeps text warm in dark mode */
   --eos-fg-muted: #9aa7a4;
-  --eos-primary: #7fc4ac; /* lightened deep green, 7.2:1 vs dark surface */
-  --eos-primary-hover: #93d0ba;
-  --eos-primary-active: #63b096;
+  --eos-primary: #ff6b7a; /* lightened Cherry Red, 6.1:1 vs dark surface */
+  --eos-primary-hover: #ff8592;
+  --eos-primary-active: #e14d5c;
   --eos-primary-fg: #181b1b;
   --eos-secondary-fg: var(--eos-fg);
   --eos-success-soft: rgba(21, 128, 61, 0.16);
   --eos-warning-soft: rgba(180, 83, 9, 0.16);
   --eos-danger-soft: rgba(185, 28, 28, 0.18);
-  --eos-info-soft: rgba(29, 78, 216, 0.18);
+  --eos-info-soft: rgba(146, 225, 255, 0.16);
   --eos-success: #4ade80;
   --eos-warning: #fbbf24;
   --eos-danger: #f87171;
-  --eos-info: #93c5fd;
+  --eos-info: #92e1ff; /* Sky Blue reads directly as text on a dark surface */
   --eos-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --eos-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --eos-shadow-lg: 0 30px 70px rgba(0, 0, 0, 0.6);
@@ -118,19 +123,19 @@
     --eos-border-strong: #565958;
     --eos-fg: #fef4ed;
     --eos-fg-muted: #9aa7a4;
-    --eos-primary: #7fc4ac;
-    --eos-primary-hover: #93d0ba;
-    --eos-primary-active: #63b096;
+    --eos-primary: #ff6b7a;
+    --eos-primary-hover: #ff8592;
+    --eos-primary-active: #e14d5c;
     --eos-primary-fg: #181b1b;
     --eos-secondary-fg: var(--eos-fg);
     --eos-success-soft: rgba(21, 128, 61, 0.16);
     --eos-warning-soft: rgba(180, 83, 9, 0.16);
     --eos-danger-soft: rgba(185, 28, 28, 0.18);
-    --eos-info-soft: rgba(29, 78, 216, 0.18);
+    --eos-info-soft: rgba(146, 225, 255, 0.16);
     --eos-success: #4ade80;
     --eos-warning: #fbbf24;
     --eos-danger: #f87171;
-    --eos-info: #93c5fd;
+    --eos-info: #92e1ff;
   }
 }
 

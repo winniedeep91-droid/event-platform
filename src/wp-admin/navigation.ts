@@ -47,7 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "events",
     label: "Events",
     items: [
-      { slug: "eventos-events-list", label: "All Events" },
+      { slug: "eventos-events-list", label: "My Events" },
       { slug: "eventos-events-calendar", label: "Calendar" },
       { slug: "eventos-venues", label: "Venues" },
       { slug: "eventos-artists", label: "Artists" },

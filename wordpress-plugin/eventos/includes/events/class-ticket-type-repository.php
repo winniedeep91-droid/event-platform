@@ -285,6 +285,46 @@ final class Ticket_Type_Repository {
 	}
 
 	/**
+	 * WooCommerce product ID => owning event ID, across every ticket type
+	 * that has a linked WooCommerce product. Used to attribute a WooCommerce
+	 * order line item back to the event it belongs to without a per-event
+	 * query — the basis for brand-wide and batched-per-event reporting.
+	 *
+	 * @param int[] $event_ids Event IDs to scope to; empty scopes to every event.
+	 * @return array<int, int> WC product ID => event ID.
+	 */
+	public function product_event_map( array $event_ids = array() ): array {
+		global $wpdb;
+
+		$table = Event_Schema::ticket_types();
+
+		if ( empty( $event_ids ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$rows = $wpdb->get_results( "SELECT event_id, wc_product_id FROM {$table} WHERE wc_product_id > 0", ARRAY_A );
+		} else {
+			$event_ids    = array_values( array_unique( array_map( 'intval', $event_ids ) ) );
+			$placeholders = implode( ',', array_fill( 0, count( $event_ids ), '%d' ) );
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT event_id, wc_product_id FROM {$table} WHERE wc_product_id > 0 AND event_id IN ({$placeholders})",
+					$event_ids
+				),
+				ARRAY_A
+			);
+		}
+
+		$map = array();
+
+		foreach ( (array) $rows as $row ) {
+			$map[ (int) $row['wc_product_id'] ] = (int) $row['event_id'];
+		}
+
+		return $map;
+	}
+
+	/**
 	 * Sanitize and validate ticket type input.
 	 *
 	 * @param array<string, mixed> $input    Raw input.

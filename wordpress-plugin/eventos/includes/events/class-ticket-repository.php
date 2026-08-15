@@ -417,6 +417,106 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Brand-wide ticket totals across every event, excluding cancelled
+	 * tickets — the source for the dashboard's Performance Overview cards.
+	 *
+	 * @return array{total: int, checked_in: int, complimentary: int}
+	 */
+	public function totals(): array {
+		global $wpdb;
+
+		$table = Event_Schema::tickets();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$row = $wpdb->get_row(
+			"SELECT COUNT(*) AS total, COALESCE(SUM(checked_in), 0) AS checked_in, COALESCE(SUM(is_complimentary), 0) AS complimentary FROM {$table} WHERE status != 'cancelled'",
+			ARRAY_A
+		);
+
+		return array(
+			'total'         => (int) ( $row['total'] ?? 0 ),
+			'checked_in'    => (int) ( $row['checked_in'] ?? 0 ),
+			'complimentary' => (int) ( $row['complimentary'] ?? 0 ),
+		);
+	}
+
+	/**
+	 * Tickets issued per day across every event within a date range,
+	 * excluding cancelled tickets — the source for the brand-wide "Tickets
+	 * sold over time" dashboard chart.
+	 *
+	 * @param string $from Inclusive lower bound (Y-m-d H:i:s, UTC).
+	 * @param string $to   Inclusive upper bound (Y-m-d H:i:s, UTC).
+	 * @return array<int, array{date: string, tickets: int}>
+	 */
+	public function counts_by_day( string $from, string $to ): array {
+		global $wpdb;
+
+		$table = Event_Schema::tickets();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DATE(created_at) AS date, COUNT(*) AS tickets FROM {$table} WHERE status != 'cancelled' AND created_at BETWEEN %s AND %s GROUP BY DATE(created_at) ORDER BY date ASC",
+				$from,
+				$to
+			),
+			ARRAY_A
+		);
+
+		return array_map(
+			static function ( array $row ): array {
+				return array(
+					'date'    => (string) $row['date'],
+					'tickets' => (int) $row['tickets'],
+				);
+			},
+			(array) $rows
+		);
+	}
+
+	/**
+	 * Ticket totals grouped by event in a single query — used for batched
+	 * per-event summaries (e.g. the dashboard's My Events table) so listing
+	 * N events never costs N queries.
+	 *
+	 * @param int[] $event_ids Event IDs.
+	 * @return array<int, array{total: int, checked_in: int}> Event ID => totals.
+	 */
+	public function counts_by_event( array $event_ids ): array {
+		global $wpdb;
+
+		$event_ids = array_values( array_unique( array_map( 'intval', $event_ids ) ) );
+
+		if ( empty( $event_ids ) ) {
+			return array();
+		}
+
+		$table        = Event_Schema::tickets();
+		$placeholders = implode( ',', array_fill( 0, count( $event_ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT event_id, COUNT(*) AS total, COALESCE(SUM(checked_in), 0) AS checked_in FROM {$table} WHERE status != 'cancelled' AND event_id IN ({$placeholders}) GROUP BY event_id",
+				$event_ids
+			),
+			ARRAY_A
+		);
+
+		$result = array();
+
+		foreach ( (array) $rows as $row ) {
+			$result[ (int) $row['event_id'] ] = array(
+				'total'      => (int) $row['total'],
+				'checked_in' => (int) $row['checked_in'],
+			);
+		}
+
+		return $result;
+	}
+
+	/**
 	 * Shape a raw row for internal consumers.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

@@ -96,7 +96,14 @@ final class Event_Controller {
 				'methods'    => 'GET',
 				'capability' => Event_Capabilities::VIEW_EVENTS,
 				'callback'   => array( $this, 'dashboard' ),
-				'summary'    => __( 'Event dashboard metrics.', 'eventos' ),
+				'summary'    => __( 'Event dashboard metrics, including brand-wide performance analytics.', 'eventos' ),
+				'args'       => array(
+					'period' => array(
+						'type'    => 'string',
+						'enum'    => array( '7d', '30d', '90d', 'year' ),
+						'default' => '30d',
+					),
+				),
 			),
 			array(
 				'route'      => '/events/calendar',
@@ -432,12 +439,21 @@ final class Event_Controller {
 	}
 
 	/**
-	 * Dashboard metrics.
+	 * Dashboard metrics, including brand-wide performance analytics scoped
+	 * to the requested chart period.
 	 *
+	 * @param WP_REST_Request $request Request.
 	 * @return mixed
 	 */
-	public function dashboard() {
-		return $this->service->dashboard();
+	public function dashboard( WP_REST_Request $request ) {
+		$allowed = array( '7d', '30d', '90d', 'year' );
+		$period  = (string) $request->get_param( 'period' );
+
+		if ( ! in_array( $period, $allowed, true ) ) {
+			$period = '30d';
+		}
+
+		return $this->service->dashboard( $period );
 	}
 
 	/**

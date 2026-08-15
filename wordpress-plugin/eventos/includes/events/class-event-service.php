@@ -63,6 +63,23 @@ final class Event_Service {
 	private Term_Repository $tags;
 
 	/**
+	 * Per-event revenue/ticket report builder — powers the dashboard's Next
+	 * Event card with the same computation the Event Workspace's Reports
+	 * tab already uses.
+	 *
+	 * @var Event_Report_Builder
+	 */
+	private Event_Report_Builder $event_reports;
+
+	/**
+	 * Brand-wide (cross-event) report builder — powers the dashboard's
+	 * Performance Overview, charts and My Events table.
+	 *
+	 * @var Brand_Report_Builder
+	 */
+	private Brand_Report_Builder $brand_reports;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -71,6 +88,13 @@ final class Event_Service {
 		$this->artists    = new Artist_Repository();
 		$this->categories = new Term_Repository( 'category' );
 		$this->tags       = new Term_Repository( 'tag' );
+
+		$ticket_types   = new Ticket_Type_Repository();
+		$tickets        = new Ticket_Repository();
+		$order_resolver = new Ticket_Order_Resolver( $ticket_types );
+
+		$this->event_reports = new Event_Report_Builder( $ticket_types, $tickets, $order_resolver );
+		$this->brand_reports = new Brand_Report_Builder( $ticket_types, $tickets, $order_resolver, $this->events );
 	}
 
 	/**
@@ -750,9 +774,9 @@ final class Event_Service {
 	 *
 	 * @return array<string, mixed>
 	 */
-	public function dashboard(): array {
-		$now   = current_time( 'mysql', true );
-		$soon  = gmdate( 'Y-m-d H:i:s', strtotime( '+30 days', (int) strtotime( $now ) ) );
+	public function dashboard( string $period = '30d' ): array {
+		$now    = current_time( 'mysql', true );
+		$soon   = gmdate( 'Y-m-d H:i:s', strtotime( '+30 days', (int) strtotime( $now ) ) );
 		$counts = $this->events->counts_by_status();
 
 		$upcoming = $this->events->query(
@@ -773,6 +797,57 @@ final class Event_Service {
 			)
 		);
 
+		// The commercial-performance table on the redesigned dashboard —
+		// deliberately a separate, larger query from `upcoming` above so
+		// that field's existing 5-item shape stays untouched for any other
+		// consumer, even though only this component currently reads it.
+		$my_events = $this->events->query(
+			array(
+				'from'     => $now,
+				'orderby'  => 'starts_at',
+				'order'    => 'asc',
+				'per_page' => 10,
+			)
+		);
+
+		$my_event_ids     = wp_list_pluck( $my_events['items'], 'id' );
+		$event_summaries  = ! empty( $my_event_ids ) ? $this->brand_reports->events_summary( $my_event_ids ) : array();
+		$my_events_rows   = array_map(
+			static function ( array $event ) use ( $event_summaries ): array {
+				$summary = $event_summaries[ (int) $event['id'] ] ?? array(
+					'tickets_sold' => 0,
+					'checked_in'   => 0,
+					'revenue'      => 0.0,
+				);
+
+				return array_merge(
+					$event,
+					array(
+						'tickets_sold' => $summary['tickets_sold'],
+						'checked_in'   => $summary['checked_in'],
+						'revenue'      => $summary['revenue'],
+					)
+				);
+			},
+			$my_events['items']
+		);
+
+		$next_event        = $my_events['items'][0] ?? null;
+		$next_event_report = null;
+
+		if ( null !== $next_event ) {
+			$next_event_report = array_merge(
+				array(
+					'event_id'  => (int) $next_event['id'],
+					'title'     => $next_event['title'],
+					'starts_at' => $next_event['starts_at'],
+					'venue_name'=> $next_event['venue_name'],
+					'status'    => $next_event['status'],
+				),
+				$this->event_reports->build( (int) $next_event['id'] )
+			);
+		}
+
 		return array(
 			'counts'            => $counts,
 			'total'             => array_sum( $counts ),
@@ -788,6 +863,14 @@ final class Event_Service {
 					'per_page' => 10,
 				)
 			)['items'] ?? array(),
+			// Brand-wide commercial performance — additive fields powering
+			// the redesigned dashboard. See Brand_Report_Builder; revenue
+			// and order figures are 0/empty (not fabricated) when
+			// WooCommerce is inactive or no ticket products exist yet.
+			'brand'             => $this->brand_reports->summary(),
+			'brand_series'      => $this->brand_reports->series( $period ),
+			'next_event'        => $next_event_report,
+			'my_events'         => $my_events_rows,
 		);
 	}
 

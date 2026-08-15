@@ -24,6 +24,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Ticket_Order_Resolver {
 
 	/**
+	 * WooCommerce order statuses treated as paid revenue across the plugin —
+	 * the single definition every financial aggregation (per-event reports,
+	 * brand-wide dashboard analytics, CRM spend metrics) reuses so "paid"
+	 * never means something different depending on which screen is asking.
+	 *
+	 * @var string[]
+	 */
+	public const PAID_STATUSES = array( 'completed', 'processing', 'on-hold' );
+
+	/**
 	 * Ticket type repository.
 	 *
 	 * @var Ticket_Type_Repository
@@ -115,6 +125,61 @@ final class Ticket_Order_Resolver {
 			'page'     => $page,
 			'per_page' => $per_page,
 		);
+	}
+
+	/**
+	 * Every paid WooCommerce order containing at least one EventOS ticket
+	 * product, across the given events, within an optional date range.
+	 * Orders are de-duplicated by WooCommerce order ID even when they
+	 * contain tickets for more than one event, so brand-wide totals never
+	 * double-count a single order — the basis for the dashboard's brand
+	 * revenue/order aggregation and the My Events table's per-event revenue.
+	 *
+	 * @param int[]  $event_ids Event IDs to scope to; empty scopes to every event.
+	 * @param string $from      Inclusive lower bound (Y-m-d H:i:s, UTC); empty = no lower bound.
+	 * @param string $to        Inclusive upper bound (Y-m-d H:i:s, UTC); empty = no upper bound.
+	 * @return WC_Order[]
+	 */
+	public function paid_orders( array $event_ids = array(), string $from = '', string $to = '' ): array {
+		if ( ! WooCommerce::is_active() ) {
+			return array();
+		}
+
+		$product_map = $this->ticket_types->product_event_map( $event_ids );
+
+		if ( empty( $product_map ) ) {
+			return array();
+		}
+
+		$wc_args = array(
+			'limit'  => -1,
+			'return' => 'objects',
+			'status' => self::PAID_STATUSES,
+		);
+
+		if ( '' !== $from || '' !== $to ) {
+			$wc_args['date_created'] = trim( $from ) . '...' . trim( $to );
+		}
+
+		$orders   = wc_get_orders( $wc_args );
+		$matching = array();
+
+		foreach ( $orders as $order ) {
+			if ( ! $order instanceof WC_Order ) {
+				continue;
+			}
+
+			foreach ( $order->get_items() as $item ) {
+				if ( method_exists( $item, 'get_product_id' ) && isset( $product_map[ (int) $item->get_product_id() ] ) ) {
+					// Keyed by order ID so an order spanning two events'
+					// products is still only counted once.
+					$matching[ $order->get_id() ] = $order;
+					break;
+				}
+			}
+		}
+
+		return array_values( $matching );
 	}
 
 	/**

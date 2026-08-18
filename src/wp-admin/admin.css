@@ -55,6 +55,7 @@ body.rtl #wpfooter {
 .eos-shell__sidebar {
   flex: 0 0 240px;
   align-self: stretch;
+  background: var(--eos-sidebar-surface);
   border-right: 1px solid var(--eos-border);
 }
 
@@ -97,6 +98,17 @@ body.rtl #wpfooter {
   min-height: 640px;
 }
 
+/* wp-admin's own common.css puts a blue box-shadow ring on every a:focus
+   (not just :focus-visible) — that's the dark blue box a mouse click
+   produces here, not anything of ours. :not(:focus-visible) scopes the
+   reset to that click-only state, so keyboard Tab navigation still gets
+   the accessible ring from .eos :focus-visible in ui.css untouched. */
+.eos-sidebar a:focus:not(:focus-visible),
+.eos-sidebar button:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
 .eos-sidebar__brand {
   display: flex;
   align-items: center;
@@ -105,7 +117,7 @@ body.rtl #wpfooter {
   font-weight: 700;
   font-size: var(--eos-text-lg);
   letter-spacing: -0.01em;
-  color: var(--eos-fg);
+  color: var(--eos-fg-inverse);
 }
 
 .eos-sidebar__brand img {
@@ -126,28 +138,37 @@ body.rtl #wpfooter {
   border-radius: var(--eos-radius-sm);
   font-weight: 600;
   font-size: var(--eos-text-md);
-  color: var(--eos-fg);
+  color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
 }
 
+/* wp-admin's "Modern" colour scheme has a global a:hover{color:...} rule
+   whose specificity (0,1,1) beats this single-class selector (0,1,0), so
+   without an explicit color here the text falls through to that dark blue
+   on hover instead of staying the sidebar's own white. .eos-sidebar__group
+   a doesn't need this because its selector already ties a:hover (0,1,1)
+   and wins on source order. */
 .eos-sidebar__top-link:hover {
-  background: var(--eos-surface-muted);
+  background: rgba(146, 225, 255, 0.25);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* Same treatment as .eos-sidebar__group a[aria-current="page"] below — one
-   deliberate active-state language across the whole sidebar (a soft Sky
-   Blue wash plus a Cherry Red accent stripe and text), not a different
-   solid-fill colour for this one top-level link. */
+   deliberate active-state language across the whole sidebar: a solid Sky
+   Blue pill with dark text and a white accent stripe, standing apart from
+   the Cherry Red rail it sits on rather than blending into it (Cherry Red
+   is the rail's own colour now, so it can't double as the active-state
+   indicator without disappearing). */
 .eos-sidebar__top-link[aria-current="page"] {
-  background: var(--eos-info-soft);
-  box-shadow: inset 2px 0 0 var(--eos-primary);
-  color: var(--eos-primary);
+  background: var(--eos-secondary);
+  box-shadow: inset 2px 0 0 var(--eos-fg-inverse);
+  color: var(--eos-secondary-fg);
 }
 
 .eos-sidebar__divider {
   height: 1px;
   margin: var(--eos-space-3) var(--eos-space-2) var(--eos-space-4);
-  background: var(--eos-border);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .eos-sidebar__group {
@@ -161,7 +182,7 @@ body.rtl #wpfooter {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--eos-fg-muted);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .eos-sidebar__group[data-tier="secondary"] .eos-sidebar__group-label {
@@ -193,7 +214,7 @@ body.rtl #wpfooter {
 }
 
 .eos-sidebar__group-toggle:hover {
-  color: var(--eos-fg);
+  color: var(--eos-fg-inverse);
 }
 
 .eos-sidebar__group-toggle .eos-sidebar__group-label {
@@ -203,7 +224,7 @@ body.rtl #wpfooter {
 
 .eos-sidebar__group-chevron {
   display: inline-flex;
-  color: var(--eos-fg-muted);
+  color: rgba(255, 255, 255, 0.65);
   transition: transform 120ms ease;
 }
 
@@ -217,7 +238,7 @@ body.rtl #wpfooter {
   padding: var(--eos-space-2) var(--eos-space-3);
   border-radius: var(--eos-radius-sm);
   font-size: var(--eos-text-base);
-  color: var(--eos-fg);
+  color: rgba(255, 255, 255, 0.9);
   text-decoration: none;
 }
 
@@ -226,25 +247,30 @@ body.rtl #wpfooter {
    divider marks the boundary, this makes it hold at a glance too. */
 .eos-sidebar__group[data-tier="secondary"] a {
   font-size: var(--eos-text-sm);
-  color: var(--eos-fg-muted);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .eos-sidebar__group[data-tier="secondary"] a:hover {
-  color: var(--eos-fg);
+  color: var(--eos-fg-inverse);
 }
 
+/* No filled pill for this lower-weight tier (it would compete with the
+   primary tier's active state), so "active" is signalled by brightness and
+   weight alone — bright white against the dimmer default, same idea as the
+   hover rule above but persistent. */
 .eos-sidebar__group[data-tier="secondary"] a[aria-current="page"] {
-  color: var(--eos-primary);
+  color: var(--eos-fg-inverse);
+  font-weight: 600;
 }
 
 .eos-sidebar__group a:hover {
-  background: var(--eos-surface-muted);
+  background: rgba(146, 225, 255, 0.25);
 }
 
 .eos-sidebar__group a[aria-current="page"] {
-  background: var(--eos-info-soft);
-  box-shadow: inset 2px 0 0 var(--eos-primary);
-  color: var(--eos-primary);
+  background: var(--eos-secondary);
+  box-shadow: inset 2px 0 0 var(--eos-fg-inverse);
+  color: var(--eos-secondary-fg);
   font-weight: 600;
 }
 
@@ -261,13 +287,13 @@ body.rtl #wpfooter {
   padding: var(--eos-space-2) var(--eos-space-3);
   border-radius: var(--eos-radius-sm);
   font-size: var(--eos-text-sm);
-  color: var(--eos-fg-muted);
+  color: rgba(255, 255, 255, 0.6);
   text-decoration: none;
 }
 
 .eos-sidebar__exit-link:hover {
-  background: var(--eos-surface-muted);
-  color: var(--eos-fg);
+  background: rgba(146, 225, 255, 0.25);
+  color: var(--eos-fg-inverse);
 }
 
 /* ----------------------------------------------------------------- topbar */
@@ -312,6 +338,29 @@ body.rtl #wpfooter {
   .eos-topbar__user-name {
     display: none;
   }
+}
+
+/* Same surface as .eos-shell__sidebar — this is the mobile equivalent of
+   that sidebar (see AdminApp.tsx), reusing the generic Drawer component, so
+   it should read as the same Cherry Red navigation zone rather than
+   falling back to the drawer's default white. The compound selector (not
+   just .eos-shell__sidebar-drawer) outranks .eos-drawer's own
+   `color: var(--eos-fg)` so this drawer's own "Menu" header text inherits
+   white instead of the dark text every other drawer in the app uses. */
+.eos-drawer.eos-shell__sidebar-drawer {
+  background: var(--eos-sidebar-surface);
+  color: var(--eos-fg-inverse);
+}
+
+/* The close button is a plain .eos-btn--ghost, styled dark-on-transparent
+   everywhere else — scoped here only, so no other drawer/modal's close
+   button is affected. */
+.eos-shell__sidebar-drawer .eos-btn--ghost {
+  color: var(--eos-fg-inverse);
+}
+
+.eos-shell__sidebar-drawer .eos-btn--ghost:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .eos-shell__sidebar-drawer .eos-sidebar {

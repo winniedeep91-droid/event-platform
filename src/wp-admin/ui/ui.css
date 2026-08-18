@@ -29,42 +29,69 @@
   --eos-text-xl: 22px;
   --eos-text-2xl: 28px;
 
-  /* Brand palette: Cherry Red (#BE0015) is the primary brand/action colour —
-     primary CTAs, selected/active states, high-priority emphasis. Sky Blue
-     (#92E1FF) is a light, restrained secondary/informational accent used
-     as a fill (never as text on white — it's too pale) for supporting
-     highlights, analytics and relationship/engagement information; it
-     doubles as --eos-accent so the app has one supporting hue, not several.
-     Clean White (#F5F5F2) is the page background; cards/tables/panels stay
-     white/near-white surfaces on top of it. Neither brand colour is meant
-     to dominate — most of the UI stays white/neutral, per the "clean,
-     modern, restrained" direction. Semantic status colours stay
-     conventional (green/amber/red/blue) since they carry meaning
-     independent of the brand accent; --eos-info is deliberately a deeper,
-     more saturated blue than the raw Sky Blue hex so it stays legible as
-     text on its soft background — --eos-info-soft is the pale Sky-Blue-
-     family tint that pairing needs. Every pairing below is contrast-checked
-     (WCAG relative luminance) against the surface it's meant to sit on; see
-     the derivation notes next to each token. */
-  --eos-bg: #f5f5f2; /* Clean White */
+  /* Brand palette: Cherry Red (#BE0015) is the STRUCTURAL/environmental
+     colour — the sidebar and the main shell canvas — so the app is
+     immediately, unmistakably EventOS the moment it renders, not a neutral
+     shell with red/blue accents. Sky Blue (#92E1FF) is the
+     INTERACTION/accent colour: buttons, active/selected/focused states,
+     card headers, table headers, borders, hover fills. White is the
+     content surface: cards/panels/table bodies stay white so they clearly
+     lift off the Cherry Red environment. This is a deliberate ROLE SWAP
+     from the previous iteration of this palette (where Cherry Red meant
+     "primary action" and Sky Blue meant "supporting neutral") — the token
+     VALUES below are unchanged (--eos-primary is still literally Cherry
+     Red, --eos-secondary/--eos-accent are still literally Sky Blue), only
+     which selectors consume which token has changed. Do not read
+     "--eos-primary" as "the primary button colour" anymore — read it as
+     "the Cherry Red brand token," consumed by structural surfaces now.
+     --eos-bg is a light tint of Cherry Red (not full-strength #be0015)
+     specifically because arbitrary page content — headings, paragraphs —
+     renders directly on it outside of any card, and full-strength Cherry
+     Red there would force a much larger, riskier typography change than a
+     tonal surface does; --eos-sidebar-surface is full-strength Cherry Red
+     because the sidebar's text is a small, fully-controlled set of
+     elements already re-styled for it below. Semantic status colours
+     (success/warning/danger/info) are untouched and stay decoupled from
+     the brand red — --eos-danger (#b91c1c) always was a different colour
+     from --eos-primary (#be0015), so destructive actions were never
+     coupled to brand red in the first place. --eos-info is deliberately a
+     deeper, more saturated blue than the raw Sky Blue hex so it stays
+     legible as TEXT (a few selectors below intentionally read from
+     --eos-info rather than --eos-secondary for exactly this reason — raw
+     Sky Blue is a fill colour, not a text colour). */
+  --eos-bg: #faebec; /* Cherry Red tint (8%) — canvas backdrop; see note above on why this is tonal, not full-strength */
   --eos-surface: #ffffff;
   --eos-surface-elevated: #ffffff; /* modals, dropdowns, popovers */
-  /* Neutral cool greys, not the old palette's warm tan/sand — these back
-     every secondary/outline/ghost button and every hover state in the app,
-     so a warm cast here reads as the old cream theme bleeding through no
-     matter what the brand tokens below are set to. */
-  --eos-surface-muted: #eeeeec; /* fill within a white surface — table headers, hover */
-  --eos-border: #e2e2de; /* 1.3:1 vs surface */
-  --eos-border-strong: #cfcfc9; /* 1.7:1 vs surface */
+  /* Tints of Sky Blue (mixed toward white) — the interaction/accent colour
+     in its "fill" role: secondary/outline/ghost buttons, table headers,
+     hover states, input backgrounds. Runtime-brandable: these fall back to
+     a tint of the default Sky Blue (#92e1ff) here, but
+     Branding::css_variables() computes the same tints from a promoter's
+     actual secondary/accent colour and overrides them via
+     --eventos-surface-muted/--eventos-border/--eventos-border-strong, so a
+     custom brand colour drives the complete light palette, not just
+     buttons. */
+  --eos-surface-muted: var(--eventos-surface-muted, #f8fdff); /* fill within a white surface — hover, input backgrounds */
+  --eos-border: var(--eventos-border, #eefaff); /* 1.3:1 vs surface */
+  --eos-border-strong: var(--eventos-border-strong, #def6ff); /* 1.7:1 vs surface */
+  /* --eos-sidebar-surface is full-strength Cherry Red (see the top note);
+     --eos-card-header/--eos-table-header stay Sky Blue tints — the
+     interaction/accent colour's job, unchanged by the structural/accent
+     role swap above. */
+  --eos-sidebar-surface: var(--eos-primary); /* full Cherry Red — bold, contained rail; runtime-brandable via --eos-primary itself */
+  --eos-card-header: #e0f7ff; /* 28% Sky Blue tint — strongest accent tint; card header band, empty-state icon badge */
+  --eos-table-header: #e5f8ff; /* 24% Sky Blue tint — table header row, just below card headers */
   --eos-fg: #262320;
   --eos-fg-muted: #66716f; /* 5.05:1 vs white */
   --eos-fg-inverse: #ffffff;
 
-  --eos-primary: var(--eventos-primary, #be0015); /* Cherry Red, 6.6:1 vs white */
-  --eos-primary-hover: var(--eventos-primary-hover, #d4142e); /* brighter on hover, still ~5.6:1 */
-  --eos-primary-active: var(--eventos-primary-active, #8f0010); /* darker on press, ~8.9:1 */
+  --eos-primary: var(--eventos-primary, #be0015); /* Cherry Red — structural surfaces (bg, sidebar) */
+  --eos-primary-hover: var(--eventos-primary-hover, #d4142e);
+  --eos-primary-active: var(--eventos-primary-active, #8f0010);
   --eos-primary-fg: #ffffff;
-  --eos-secondary: var(--eventos-secondary, #92e1ff); /* Sky Blue, fills only */
+  --eos-secondary: var(--eventos-secondary, #92e1ff); /* Sky Blue — interaction fills: buttons, active/selected states */
+  --eos-secondary-hover: #7dd8ff; /* deeper on hover — Sky Blue starts light, so interaction feedback goes darker, not lighter */
+  --eos-secondary-active: #63cfff; /* darker still on press */
   --eos-secondary-fg: var(--eos-fg);
   --eos-accent: var(--eventos-accent, #92e1ff); /* Sky Blue, fills only — same hue as secondary, one supporting colour */
 
@@ -74,13 +101,13 @@
   --eos-warning-soft: #fffbeb;
   --eos-danger: #b91c1c;
   --eos-danger-soft: #fef2f2;
-  --eos-info: #0369a1; /* deep sky-blue, legible as text — 6.4:1 vs its own soft background */
+  --eos-info: #0369a1; /* deep sky-blue, legible as TEXT — used wherever an interactive/accent colour needs to be foreground text, not a fill */
   --eos-info-soft: #e4f7ff; /* pale Sky Blue tint */
 
   --eos-shadow-sm: 0 1px 2px rgba(38, 35, 32, 0.06);
   --eos-shadow: 0 8px 24px rgba(38, 35, 32, 0.08);
   --eos-shadow-lg: 0 24px 60px rgba(38, 35, 32, 0.18);
-  --eos-focus: 0 0 0 2px var(--eos-surface), 0 0 0 4px var(--eos-primary);
+  --eos-focus: 0 0 0 2px var(--eos-surface), 0 0 0 4px var(--eos-secondary);
 
   color: var(--eos-fg);
   font-family: var(--eos-font);
@@ -96,13 +123,29 @@
   --eos-surface-muted: #2e3332;
   --eos-border: #404443;
   --eos-border-strong: #565958;
+  /* Same structural-tint role as light mode, but the light-mode Sky Blue
+     tints would leak through untinted-for-dark otherwise — reuse the
+     existing dark surface-muted so the sidebar/card-header/table-header
+     stay coherent with the rest of dark mode instead of introducing a new
+     dark-mode design decision here. */
+  --eos-sidebar-surface: #2e3332;
+  --eos-card-header: #2e3332;
+  --eos-table-header: #2e3332;
   --eos-fg: #fef4ed; /* warm off-white, keeps text warm in dark mode */
   --eos-fg-muted: #9aa7a4;
   --eos-primary: #ff6b7a; /* lightened Cherry Red, 6.1:1 vs dark surface */
   --eos-primary-hover: #ff8592;
   --eos-primary-active: #e14d5c;
   --eos-primary-fg: #181b1b;
-  --eos-secondary-fg: var(--eos-fg);
+  /* Fixed dark colour, not var(--eos-fg) — --eos-secondary-fg pairs with a
+     light Sky Blue FILL (buttons, active states) that stays light in both
+     modes, so its text needs to stay dark in both modes too. var(--eos-fg)
+     would resolve to this mode's *light* foreground colour and produce
+     light text on a light fill — this token was unused by any dark-mode-
+     visible selector before this pass, so fixing it here changes nothing
+     dark mode currently shows; it only prepares it for the new consumers
+     (primary buttons, segmented controls, etc.) this same pass adds. */
+  --eos-secondary-fg: #181b1b;
   --eos-success-soft: rgba(21, 128, 61, 0.16);
   --eos-warning-soft: rgba(180, 83, 9, 0.16);
   --eos-danger-soft: rgba(185, 28, 28, 0.18);
@@ -114,6 +157,9 @@
   --eos-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --eos-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --eos-shadow-lg: 0 30px 70px rgba(0, 0, 0, 0.6);
+  /* Explicitly Cherry Red here (not inherited from the light-mode base,
+     which now points at --eos-secondary) — dark mode's own focus-ring
+     decision, unchanged from before this pass. */
   --eos-focus: 0 0 0 2px var(--eos-surface), 0 0 0 4px var(--eos-primary);
 }
 
@@ -125,13 +171,16 @@
     --eos-surface-muted: #2e3332;
     --eos-border: #404443;
     --eos-border-strong: #565958;
+    --eos-sidebar-surface: #2e3332;
+    --eos-card-header: #2e3332;
+    --eos-table-header: #2e3332;
     --eos-fg: #fef4ed;
     --eos-fg-muted: #9aa7a4;
     --eos-primary: #ff6b7a;
     --eos-primary-hover: #ff8592;
     --eos-primary-active: #e14d5c;
     --eos-primary-fg: #181b1b;
-    --eos-secondary-fg: var(--eos-fg);
+    --eos-secondary-fg: #181b1b; /* fixed dark, not var(--eos-fg) — see the .eos-dark block's note above */
     --eos-success-soft: rgba(21, 128, 61, 0.16);
     --eos-warning-soft: rgba(180, 83, 9, 0.16);
     --eos-danger-soft: rgba(185, 28, 28, 0.18);
@@ -140,6 +189,12 @@
     --eos-warning: #fbbf24;
     --eos-danger: #f87171;
     --eos-info: #92e1ff;
+    /* Without this, this block would inherit the light-mode base's
+       --eos-focus (now pointing at --eos-secondary, which isn't mode-aware)
+       instead of the dark-appropriate Cherry Red the explicit .eos-dark
+       class already gets — a real light-mode-to-dark-mode leak this pass
+       would otherwise introduce for system-preference dark mode. */
+    --eos-focus: 0 0 0 2px var(--eos-surface), 0 0 0 4px var(--eos-primary);
   }
 }
 
@@ -303,7 +358,10 @@
   align-items: center;
   gap: var(--eos-space-3);
   padding: var(--eos-space-4) var(--eos-space-5);
+  background: var(--eos-card-header);
   border-bottom: 1px solid var(--eos-border);
+  border-top-left-radius: var(--eos-radius-lg);
+  border-top-right-radius: var(--eos-radius-lg);
 }
 
 .eos-card__title {
@@ -423,9 +481,12 @@
   cursor: not-allowed;
 }
 
-.eos-btn--primary { background: var(--eos-primary); color: var(--eos-primary-fg); }
-.eos-btn--primary:hover:not([disabled]) { background: var(--eos-primary-hover); }
-.eos-btn--primary:active:not([disabled]) { background: var(--eos-primary-active); }
+/* Sky Blue, not Cherry Red — Cherry Red is now the structural/environmental
+   colour (sidebar, canvas), so a red "primary" button would sit red-on-red
+   against the sidebar and disappear. */
+.eos-btn--primary { background: var(--eos-secondary); color: var(--eos-secondary-fg); }
+.eos-btn--primary:hover:not([disabled]) { background: var(--eos-secondary-hover); }
+.eos-btn--primary:active:not([disabled]) { background: var(--eos-secondary-active); }
 
 .eos-btn--secondary {
   background: var(--eos-surface-muted);
@@ -444,9 +505,12 @@
 .eos-btn--ghost { background: transparent; color: var(--eos-fg); }
 .eos-btn--ghost:hover:not([disabled]) { background: var(--eos-surface-muted); }
 
+/* --eos-info, not --eos-secondary — this is TEXT, and raw Sky Blue
+   (#92e1ff) is too pale to read as text on white; --eos-info is the
+   deeper, legible member of the same Sky Blue family. */
 .eos-btn--link {
   background: none;
-  color: var(--eos-primary);
+  color: var(--eos-info);
   padding: 0;
   min-height: 0;
   text-decoration: underline;
@@ -478,9 +542,9 @@
 }
 
 .eos-btn-group--attached .eos-btn[aria-pressed="true"] {
-  background: var(--eos-primary);
-  color: var(--eos-primary-fg);
-  border-color: var(--eos-primary);
+  background: var(--eos-secondary);
+  color: var(--eos-secondary-fg);
+  border-color: var(--eos-secondary);
   position: relative;
   z-index: 1;
 }
@@ -542,7 +606,7 @@
 .eos-textarea,
 .eos-select {
   width: 100%;
-  background: var(--eos-surface);
+  background: var(--eos-surface-muted);
   color: var(--eos-fg);
   border: 1px solid var(--eos-border-strong);
   border-radius: var(--eos-radius);
@@ -595,7 +659,7 @@
 .eos-input[disabled],
 .eos-textarea[disabled],
 .eos-select[disabled] {
-  background: var(--eos-surface-muted);
+  background: var(--eos-border);
   cursor: not-allowed;
 }
 
@@ -631,7 +695,7 @@
 
 .eos-choice input {
   margin: 2px 0 0;
-  accent-color: var(--eos-primary);
+  accent-color: var(--eos-info);
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
@@ -683,7 +747,7 @@
   transition: transform 120ms ease;
 }
 
-.eos-switch__track[aria-checked="true"] { background: var(--eos-primary); }
+.eos-switch__track[aria-checked="true"] { background: var(--eos-secondary); }
 .eos-switch__track[aria-checked="true"] .eos-switch__thumb { transform: translateX(18px); }
 .eos-switch__track[disabled] { opacity: 0.6; cursor: not-allowed; }
 
@@ -761,7 +825,7 @@
 }
 
 .eos-table thead th {
-  background: var(--eos-surface-muted);
+  background: var(--eos-table-header);
   color: var(--eos-fg-muted);
   font-size: var(--eos-text-xs);
   letter-spacing: 0.06em;
@@ -889,7 +953,7 @@
 .eos-toast {
   background: var(--eos-surface);
   border: 1px solid var(--eos-border);
-  border-left: 4px solid var(--eos-primary);
+  border-left: 4px solid var(--eos-secondary);
   border-radius: var(--eos-radius);
   box-shadow: var(--eos-shadow);
   padding: var(--eos-space-3) var(--eos-space-4);
@@ -949,7 +1013,10 @@
   padding: var(--eos-space-8) var(--eos-space-5);
   border: 1px dashed var(--eos-border-strong);
   border-radius: var(--eos-radius-lg);
-  background: var(--eos-surface);
+  /* Primarily white still — surface-muted is the subtlest tint in the
+     system, just enough that an empty state (the dominant thing visible on
+     an unpopulated screen) doesn't read as a plain, unbranded grey box. */
+  background: var(--eos-surface-muted);
 }
 
 .eos-empty__icon {
@@ -959,7 +1026,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--eos-surface-muted);
+  /* Stronger than the card's own background so the icon badge reads as a
+     deliberate Sky Blue accent when a view passes one, per the same tint
+     used for card headers. */
+  background: var(--eos-card-header);
   color: var(--eos-fg-muted);
   margin-bottom: var(--eos-space-2);
 }
@@ -989,7 +1059,7 @@
 
 .eos-progress__bar {
   height: 100%;
-  background: var(--eos-primary);
+  background: var(--eos-secondary);
   border-radius: inherit;
   transition: width 200ms ease;
 }
@@ -1017,7 +1087,7 @@
   padding: 0;
 }
 .eos-breadcrumbs a { color: var(--eos-fg-muted); text-decoration: none; }
-.eos-breadcrumbs a:hover { color: var(--eos-primary); text-decoration: underline; }
+.eos-breadcrumbs a:hover { color: var(--eos-info); text-decoration: underline; }
 .eos-breadcrumbs__separator { color: var(--eos-fg-muted); }
 .eos-breadcrumbs [aria-current="page"] { color: var(--eos-fg); font-weight: 600; }
 
@@ -1044,8 +1114,8 @@
 }
 
 .eos-tabs__tab[aria-selected="true"] {
-  color: var(--eos-primary);
-  border-bottom-color: var(--eos-primary);
+  color: var(--eos-info);
+  border-bottom-color: var(--eos-info);
 }
 
 .eos-tabs__tab[disabled] { opacity: 0.5; cursor: not-allowed; }
@@ -1070,9 +1140,9 @@
 .eos-nav-pills a:hover { color: var(--eos-fg); border-color: var(--eos-border-strong); }
 
 .eos-nav-pills a[aria-current="page"] {
-  background: var(--eos-primary);
-  border-color: var(--eos-primary);
-  color: var(--eos-primary-fg);
+  background: var(--eos-secondary);
+  border-color: var(--eos-secondary);
+  color: var(--eos-secondary-fg);
 }
 
 .eos-accordion {
@@ -1139,9 +1209,9 @@
 }
 
 .eos-stepper__step[data-state="current"] .eos-stepper__marker {
-  background: var(--eos-primary);
-  color: var(--eos-primary-fg);
-  border-color: var(--eos-primary);
+  background: var(--eos-secondary);
+  color: var(--eos-secondary-fg);
+  border-color: var(--eos-secondary);
 }
 
 .eos-stepper__step[data-state="complete"] .eos-stepper__marker {
@@ -1267,7 +1337,7 @@
 }
 
 .eos-uploader__dropzone[data-dragging="true"] {
-  border-color: var(--eos-primary);
+  border-color: var(--eos-info);
   background: var(--eos-info-soft);
 }
 

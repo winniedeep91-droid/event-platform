@@ -101,16 +101,57 @@ final class Branding {
 	/**
 	 * Inline CSS custom properties for the EventOS admin screens.
 	 *
+	 * Beyond the three named brand colours, this also derives the light
+	 * theme's supporting surfaces/borders as tints of the secondary colour
+	 * (mixed toward white — a "tint" in the literal colour-theory sense),
+	 * so a promoter's custom secondary/accent colour drives the whole light
+	 * palette — table headers, hover fills, input backgrounds, borders —
+	 * not just the three directly-named tokens. See ui.css's
+	 * --eos-surface-muted/--eos-border/--eos-border-strong, which fall back
+	 * to the equivalent tints of the default Sky Blue when unset.
+	 *
 	 * @return string
 	 */
 	public static function css_variables(): string {
-		$colors = self::colors();
+		$colors      = self::colors();
+		$tint_source = '' !== $colors['secondary'] ? $colors['secondary'] : $colors['accent'];
 
 		return sprintf(
-			':root{--eventos-primary:%1$s;--eventos-secondary:%2$s;--eventos-accent:%3$s;}',
+			':root{--eventos-primary:%1$s;--eventos-secondary:%2$s;--eventos-accent:%3$s;--eventos-surface-muted:%4$s;--eventos-border:%5$s;--eventos-border-strong:%6$s;}',
 			esc_attr( $colors['primary'] ),
 			esc_attr( $colors['secondary'] ),
-			esc_attr( $colors['accent'] )
+			esc_attr( $colors['accent'] ),
+			esc_attr( self::tint( $tint_source, 0.06 ) ),
+			esc_attr( self::tint( $tint_source, 0.16 ) ),
+			esc_attr( self::tint( $tint_source, 0.30 ) )
+		);
+	}
+
+	/**
+	 * Blends a #rrggbb colour toward white by the given weight — a tint.
+	 * Falls back to white for anything that isn't a well-formed hex colour
+	 * (e.g. an empty/unset setting) rather than emitting invalid CSS.
+	 *
+	 * @param string $hex    Source colour, #rrggbb.
+	 * @param float  $weight How much of the source colour to keep, 0-1.
+	 * @return string
+	 */
+	private static function tint( string $hex, float $weight ): string {
+		$hex = ltrim( trim( $hex ), '#' );
+
+		if ( 6 !== strlen( $hex ) || ! ctype_xdigit( $hex ) ) {
+			return '#ffffff';
+		}
+
+		$channel = static function ( int $value ) use ( $weight ): int {
+			return (int) round( 255 - ( 255 - $value ) * $weight );
+		};
+
+		return sprintf(
+			'#%02x%02x%02x',
+			$channel( hexdec( substr( $hex, 0, 2 ) ) ),
+			$channel( hexdec( substr( $hex, 2, 2 ) ) ),
+			$channel( hexdec( substr( $hex, 4, 2 ) ) )
 		);
 	}
 }

@@ -110,6 +110,16 @@ final class Branding {
 	 * --eos-surface-muted/--eos-border/--eos-border-strong, which fall back
 	 * to the equivalent tints of the default Sky Blue when unset.
 	 *
+	 * Deliberately does not emit a full `.eos{...}` snapshot of the palette
+	 * (structural surfaces, shadows, foreground colours, etc.) — the
+	 * compiled stylesheet is the single source of truth for those, and a
+	 * second hardcoded copy here would drift out of sync with it exactly as
+	 * happened when an earlier version of this method hardcoded a
+	 * pre-role-swap palette (including a stale --eos-bg) and silently
+	 * overrode the current design at runtime. Only the three named brand
+	 * colours plus their directly-derived tints are runtime-brandable; every
+	 * other token stays whatever ui.css defines.
+	 *
 	 * @return string
 	 */
 	public static function css_variables(): string {

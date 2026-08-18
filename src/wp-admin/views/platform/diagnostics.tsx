@@ -4,12 +4,19 @@
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { platformApi, type DiagnosticsCheck, type JobListParams, type JobRecord } from "../../api";
+import {
+  crmApi,
+  platformApi,
+  type DiagnosticsCheck,
+  type JobListParams,
+  type JobRecord,
+} from "../../api";
 import {
   Alert,
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   DataTable,
   DefinitionList,
   FilterBar,
@@ -42,6 +49,7 @@ export function DiagnosticsView() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  const [backfillConfirmOpen, setBackfillConfirmOpen] = useState(false);
 
   const params = useMemo<JobListParams>(
     () => ({ search, status, page, per_page: PER_PAGE }),
@@ -77,6 +85,24 @@ export function DiagnosticsView() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const backfillRuns = useQuery({
+    queryKey: ["eventos", "crm", "backfill-runs"],
+    queryFn: crmApi.backfillRuns,
+  });
+
+  const startBackfill = useMutation({
+    mutationFn: () => crmApi.startBackfill(),
+    onSuccess: () => {
+      setBackfillConfirmOpen(false);
+      toast.success("Audience CRM backfill started — processes in the background job queue.");
+      void queryClient.invalidateQueries({ queryKey: ["eventos", "crm", "backfill-runs"] });
+      void invalidate();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const latestBackfillRun = backfillRuns.data?.runs[0] ?? null;
 
   const data = report.data;
 
@@ -255,6 +281,39 @@ export function DiagnosticsView() {
           </>
         ) : null}
 
+        <Section title="Audience CRM">
+          <Card>
+            <Stack>
+              <p>
+                Populate Audience CRM from existing WooCommerce customers and ticket/guest history.
+                New orders resolve into Audience CRM automatically as they fulfil — this backfills
+                everything that existed before that started.
+              </p>
+              {latestBackfillRun ? (
+                <Grid minColumnWidth={160}>
+                  <StatCard
+                    label="Last run"
+                    value={humanise(latestBackfillRun.status)}
+                    hint={formatDateTime(latestBackfillRun.started_at)}
+                  />
+                  <StatCard label="Resolved" value={latestBackfillRun.resolved} />
+                  <StatCard label="Created" value={latestBackfillRun.created} />
+                  <StatCard label="Conflicts" value={latestBackfillRun.conflicts} />
+                </Grid>
+              ) : null}
+              <div>
+                <Button
+                  variant="primary"
+                  loading={startBackfill.isPending}
+                  onClick={() => setBackfillConfirmOpen(true)}
+                >
+                  Backfill Audience CRM
+                </Button>
+              </div>
+            </Stack>
+          </Card>
+        </Section>
+
         <Section title="Background jobs">
           <Stack>
             <FilterBar
@@ -307,6 +366,16 @@ export function DiagnosticsView() {
           </Stack>
         </Section>
       </Stack>
+
+      <ConfirmDialog
+        open={backfillConfirmOpen}
+        onCancel={() => setBackfillConfirmOpen(false)}
+        onConfirm={() => startBackfill.mutate()}
+        busy={startBackfill.isPending}
+        confirmLabel="Start backfill"
+        title="Backfill Audience CRM"
+        description="Populate Audience CRM from existing WooCommerce customers and ticket/guest history. Safe to run more than once — already-resolved people are matched, not duplicated."
+      />
     </PageLayout>
   );
 }

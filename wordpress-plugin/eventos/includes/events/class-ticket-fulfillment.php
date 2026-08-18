@@ -242,6 +242,28 @@ final class Ticket_Fulfillment {
 		foreach ( array_keys( $affected_types ) as $ticket_type_id ) {
 			$this->ticket_types->refresh_stock( (int) $ticket_type_id );
 		}
+
+		if ( ! empty( $affected_types ) ) {
+			/**
+			 * Fires once per order after it fulfilled at least one EventOS
+			 * ticket — the single point in the ticket/order lifecycle where
+			 * the purchaser's identity signals (customer ID, billing email,
+			 * name, phone) are known and this order is confirmed EventOS-
+			 * relevant. The CRM module listens here to resolve/update the
+			 * permanent Person via Person_Resolver, the same path
+			 * Person_Backfill_Service uses for historical data — see that
+			 * class's docblock. Deliberately not fired for orders with no
+			 * ticket-type line items, so CRM only ever resolves purchasers
+			 * who actually did EventOS business.
+			 *
+			 * @param int    $order_id    WooCommerce order ID.
+			 * @param int    $customer_id WooCommerce customer ID, 0 for a guest checkout.
+			 * @param string $email       Billing email.
+			 * @param string $name        Billing first + last name.
+			 * @param string $phone       Billing phone.
+			 */
+			do_action( 'eventos_ticket_order_fulfilled', $order_id, $customer_id, $email, $name, $phone );
+		}
 	}
 
 	/**

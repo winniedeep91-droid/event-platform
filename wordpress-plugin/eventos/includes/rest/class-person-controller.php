@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Rest;
 
 use EventOS\Crm\Crm_Capabilities;
+use EventOS\Crm\Person_Backfill_Service;
 use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Note_Repository;
 use EventOS\Crm\Person_Service;
@@ -241,6 +242,20 @@ final class Person_Controller {
 				'capability' => $manage,
 				'callback'   => array( $this, 'event_persons' ),
 				'summary'    => __( 'Permanent Persons associated with an event.', 'eventos' ),
+			),
+			array(
+				'route'      => '/crm/backfill/runs',
+				'methods'    => 'GET',
+				'capability' => $manage,
+				'callback'   => array( $this, 'backfill_runs' ),
+				'summary'    => __( 'Historical CRM backfill run history.', 'eventos' ),
+			),
+			array(
+				'route'      => '/crm/backfill/start',
+				'methods'    => 'POST',
+				'capability' => $manage,
+				'callback'   => array( $this, 'start_backfill' ),
+				'summary'    => __( 'Start the historical WooCommerce/guest backfill into the permanent Person.', 'eventos' ),
 			),
 		);
 	}
@@ -478,6 +493,31 @@ final class Person_Controller {
 		$result   = $this->service->list_for_event( (int) $request->get_param( 'id' ), $page, $per_page );
 
 		return Rest_Response::collection( $result['items'], $result['total'], $page, $per_page );
+	}
+
+	/**
+	 * Historical CRM backfill run history, newest first — see
+	 * {@see \EventOS\Crm\Person_Backfill_Service}.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function backfill_runs(): array {
+		return array( 'runs' => Person_Backfill_Service::runs() );
+	}
+
+	/**
+	 * Start a new historical CRM backfill run. Idempotent to call repeatedly
+	 * (a fresh run always starts from offset 0 and every resolution goes
+	 * through {@see \EventOS\Crm\Person_Resolver}, which never creates a
+	 * duplicate Person for an identity signal already attached to one), and
+	 * safe to run against live data — it only ever reads WooCommerce/guest
+	 * rows and writes to the permanent Person tables, never to WooCommerce
+	 * or event/ticket/guest data.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function start_backfill(): array {
+		return Person_Backfill_Service::start();
 	}
 
 	/**

@@ -14,8 +14,10 @@ use EventOS\Crm\Crm_Capabilities;
 use EventOS\Crm\Person_Backfill_Service;
 use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
+use EventOS\Crm\Person_Metrics_Service;
 use EventOS\Crm\Person_Note_Repository;
 use EventOS\Crm\Person_Repository;
+use EventOS\Crm\Person_Resolver;
 use EventOS\Crm\Person_Schema;
 use EventOS\Crm\Person_Service;
 use EventOS\Crm\Person_Tag_Repository;
@@ -199,6 +201,47 @@ final class Crm_Module extends Abstract_Module {
 
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
+		add_action( 'eventos_ticket_order_fulfilled', array( $this, 'handle_ticket_order_fulfilled' ), 10, 5 );
+	}
+
+	/**
+	 * Resolve/update the permanent Person for an order that just fulfilled
+	 * at least one EventOS ticket — the live counterpart to
+	 * {@see Person_Backfill_Service}'s historical passes, going through the
+	 * exact same {@see Person_Resolver} so a Person created by one path is
+	 * found by the other. Fired from
+	 * {@see \EventOS\Events\Ticket_Fulfillment::fulfil_order()} (see that
+	 * method's docblock) rather than a raw WooCommerce hook, so this only
+	 * ever runs for orders already confirmed to be EventOS-relevant.
+	 *
+	 * @param int    $order_id    WooCommerce order ID.
+	 * @param int    $customer_id WooCommerce customer ID, 0 for a guest checkout.
+	 * @param string $email       Billing email.
+	 * @param string $name        Billing first + last name.
+	 * @param string $phone       Billing phone.
+	 * @return void
+	 */
+	public function handle_ticket_order_fulfilled( int $order_id, int $customer_id, string $email, string $name, string $phone ): void {
+		if ( $customer_id <= 0 && '' === trim( $email ) ) {
+			// Nothing to resolve against — Person_Resolver would otherwise
+			// create an unmatchable blank Person on every such call.
+			return;
+		}
+
+		$resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+
+		$result = $resolver->find_or_create(
+			array(
+				'wc_customer_id' => $customer_id,
+				'email'          => $email,
+				'name'           => $name,
+				'phone'          => $phone,
+				'source'         => 'ticket_fulfillment',
+				'source_id'      => (string) $order_id,
+			)
+		);
+
+		( new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() ) )->recompute( (int) $result['person']['id'] );
 	}
 
 	/**

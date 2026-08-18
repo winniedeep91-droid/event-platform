@@ -217,6 +217,7 @@ final class Person_Backfill_Service {
 				)
 			);
 
+			self::metrics()->recompute( (int) $result['person']['id'] );
 			self::tally( $run, $result );
 		}
 
@@ -273,6 +274,7 @@ final class Person_Backfill_Service {
 				)
 			);
 
+			self::metrics()->recompute( (int) $result['person']['id'] );
 			self::tally( $run, $result );
 		}
 
@@ -341,6 +343,15 @@ final class Person_Backfill_Service {
 	 */
 	private static function resolver(): Person_Resolver {
 		return new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+	}
+
+	/**
+	 * A metrics service bound to fresh repository instances.
+	 *
+	 * @return Person_Metrics_Service
+	 */
+	private static function metrics(): Person_Metrics_Service {
+		return new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() );
 	}
 
 	/**

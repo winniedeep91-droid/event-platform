@@ -1716,6 +1716,19 @@ export interface RelationshipInsights {
   lapsed_customers: { available: false; reason: string };
 }
 
+export interface BackfillRun {
+  id: number;
+  status: "queued" | "running" | "complete" | "failed";
+  stage: "wc_customers" | "guests" | "complete";
+  offset: number;
+  resolved: number;
+  created: number;
+  conflicts: number;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export const crmApi = {
   // ── Insights ──────────────────────────────────────────────────────────
   insights: () => unwrap<RelationshipInsights>("crm/insights"),
@@ -1796,4 +1809,8 @@ export const crmApi = {
     unwrapCollection<EventPersonEntry>(
       `events/${eventId}/crm/persons${query({ page, per_page: perPage })}`,
     ),
+
+  // ── Historical backfill ───────────────────────────────────────────────
+  backfillRuns: () => unwrap<{ runs: BackfillRun[] }>("crm/backfill/runs"),
+  startBackfill: () => unwrap<BackfillRun>("crm/backfill/start", { method: "POST" }),
 };

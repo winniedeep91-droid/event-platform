@@ -105,6 +105,17 @@ final class Platform_Module extends Abstract_Module {
 				'capability' => Capabilities::MANAGE_SETTINGS,
 			),
 			array(
+				'slug'       => 'eventos-import-export',
+				'title'      => __( 'Import / Export', 'eventos' ),
+				'view'       => 'platform/import-export',
+				// Menu visibility mirrors the same broad route-level gate the
+				// exports/imports REST routes use (Capabilities::VIEW_DASHBOARD)
+				// — the fine-grained check is per-entity (RUN_EXPORTS/
+				// RUN_IMPORTS), enforced by Export_Service/Import_Engine, not
+				// by whether this menu item shows up.
+				'capability' => Capabilities::VIEW_DASHBOARD,
+			),
+			array(
 				'slug'       => 'eventos-settings',
 				'title'      => __( 'Organisation Settings', 'eventos' ),
 				'view'       => 'platform/settings',

@@ -194,8 +194,16 @@ export const api = {
     request<{ revoked: boolean }>(`invitations/${id}`, { method: "DELETE" }),
 };
 
-/** Opens the WordPress media library and resolves with the chosen attachment. */
-export function selectAttachment(title: string): Promise<Attachment | null> {
+/**
+ * Opens the WordPress media library and resolves with the chosen attachment.
+ * `libraryType` defaults to "image" (every existing caller — branding/logo
+ * pickers — wants that), but accepts any `wp.media` library type filter, e.g.
+ * "text" for the CSV import picker.
+ */
+export function selectAttachment(
+  title: string,
+  libraryType: string = "image",
+): Promise<Attachment | null> {
   return new Promise((resolve) => {
     const media = window.wp?.media;
 
@@ -204,7 +212,7 @@ export function selectAttachment(title: string): Promise<Attachment | null> {
       return;
     }
 
-    const frame = media({ title, multiple: false, library: { type: "image" } });
+    const frame = media({ title, multiple: false, library: { type: libraryType } });
 
     frame.on("select", () => {
       resolve(frame.state().get("selection").first().toJSON());
@@ -1216,6 +1224,76 @@ export interface SyncHistoryParams {
   per_page?: number;
 }
 
+// ── Import / Export ──────────────────────────────────────────────────────
+
+export interface ExportEntity {
+  entity: string;
+  label: string;
+  module: string;
+  columns: Record<string, string>;
+  formats: string[];
+}
+
+export interface ImportTargetField {
+  label: string;
+  required: boolean;
+  type: string;
+  aliases: string[];
+}
+
+export interface ImportTarget {
+  entity: string;
+  label: string;
+  module: string;
+  fields: Record<string, ImportTargetField>;
+}
+
+export interface ImportProviderInfo {
+  slug: string;
+  label: string;
+  description: string;
+  entities: string[];
+  ready: boolean;
+  status: string;
+}
+
+export interface ImportSource {
+  provider: string;
+  attachment_id?: number;
+  path?: string;
+  delimiter?: string;
+  enclosure?: string;
+}
+
+export interface ImportPreview {
+  columns: string[];
+  rows: Array<Record<string, string>>;
+  total: number;
+  provider: string;
+}
+
+export interface ImportRun {
+  id: number;
+  provider: string;
+  entity: string;
+  source: ImportSource;
+  mapping: Record<string, string>;
+  dry_run: boolean;
+  status: "queued" | "running" | "complete" | "failed" | "rolled_back" | "cancelled";
+  offset: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  new?: number;
+  existing?: number;
+  duplicate?: number;
+  errors: string[];
+  created: Array<{ entity: string; id: string | number }>;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DiagnosticsCheck {
   id: string;
   label: string;
@@ -1322,6 +1400,37 @@ export const platformApi = {
       method: "POST",
       body: JSON.stringify({ id }),
     }),
+
+  // ── Import / Export ───────────────────────────────────────────────────
+  exportEntities: () => unwrap<{ entities: ExportEntity[] }>("exports"),
+  exportUrl: (entity: string, format: string, args: Record<string, string | number> = {}) =>
+    `${config().restUrl}exports/${entity}/${format}${query({ ...args, _wpnonce: config().nonce })}`,
+  importTargets: () =>
+    unwrap<{ providers: ImportProviderInfo[]; targets: ImportTarget[] }>("imports/targets"),
+  importPreview: (source: ImportSource, limit = 10) =>
+    unwrap<ImportPreview>("imports/preview", {
+      method: "POST",
+      body: JSON.stringify({ source, limit }),
+    }),
+  importMapping: (source: ImportSource, entity: string) =>
+    unwrap<Record<string, string>>("imports/mapping", {
+      method: "POST",
+      body: JSON.stringify({ source, entity }),
+    }),
+  startImport: (
+    source: ImportSource,
+    entity: string,
+    mapping: Record<string, string>,
+    dryRun: boolean,
+  ) =>
+    unwrap<ImportRun>("imports/start", {
+      method: "POST",
+      body: JSON.stringify({ source, entity, mapping, dry_run: dryRun }),
+    }),
+  importRuns: () => unwrap<{ runs: ImportRun[] }>("imports/runs"),
+  importRun: (id: number) => unwrap<ImportRun>(`imports/runs/${id}`),
+  rollbackImport: (id: number) =>
+    unwrap<ImportRun>(`imports/runs/${id}/rollback`, { method: "POST" }),
 };
 
 // ── WooCommerce integration types ─────────────────────────────────────────

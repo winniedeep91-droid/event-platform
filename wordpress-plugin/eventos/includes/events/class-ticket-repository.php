@@ -517,6 +517,71 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * A flat, export-friendly listing of tickets joined with their type,
+	 * event, guest and check-in data — no existing method returns tickets
+	 * independent of a single order/event, so this is the accessor the
+	 * Tickets export target needs. Read-only; nothing else in the codebase
+	 * calls this, it exists purely for reporting/export.
+	 *
+	 * @param array<string, mixed> $args Optional: 'event_id' (int, 0 = every event), 'limit' (0 = no limit).
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function query( array $args = array() ): array {
+		global $wpdb;
+
+		$tickets      = Event_Schema::tickets();
+		$ticket_types = Event_Schema::ticket_types();
+		$events       = Event_Schema::events();
+		$guests       = Event_Schema::guests();
+
+		$where  = array( '1=1' );
+		$params = array();
+
+		$event_id = (int) ( $args['event_id'] ?? 0 );
+
+		if ( $event_id > 0 ) {
+			$where[]  = 't.event_id = %d';
+			$params[] = $event_id;
+		}
+
+		$limit = max( 0, (int) ( $args['limit'] ?? 0 ) );
+		$sql   = "SELECT t.*, tt.name AS ticket_type_name, e.title AS event_title, e.slug AS event_slug,
+				g.name AS guest_name, g.email AS guest_email
+			FROM {$tickets} t
+			LEFT JOIN {$ticket_types} tt ON tt.id = t.ticket_type_id
+			LEFT JOIN {$events} e ON e.id = t.event_id
+			LEFT JOIN {$guests} g ON g.id = t.guest_id
+			WHERE " . implode( ' AND ', $where ) . ' ORDER BY t.id ASC';
+
+		if ( $limit > 0 ) {
+			$sql      .= ' LIMIT %d';
+			$params[] = $limit;
+		}
+
+		if ( $params ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A );
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$rows = $wpdb->get_results( $sql, ARRAY_A );
+		}
+
+		return array_map(
+			function ( array $row ): array {
+				$hydrated                 = $this->hydrate( $row );
+				$hydrated['ticket_type_name'] = (string) ( $row['ticket_type_name'] ?? '' );
+				$hydrated['event_title']       = (string) ( $row['event_title'] ?? '' );
+				$hydrated['event_slug']        = (string) ( $row['event_slug'] ?? '' );
+				$hydrated['guest_name']        = (string) ( $row['guest_name'] ?? '' );
+				$hydrated['guest_email']       = (string) ( $row['guest_email'] ?? '' );
+
+				return $hydrated;
+			},
+			(array) $rows
+		);
+	}
+
+	/**
 	 * Shape a raw row for internal consumers.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

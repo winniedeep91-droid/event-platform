@@ -203,7 +203,19 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 			'errors'   => array(),
 			'created'  => array(),
 			'done'     => count( $rows ) < $limit,
+			// 'new'/'existing'/'duplicate' are only ever populated when the
+			// target registers an optional 'classifier' callable — most
+			// targets don't need one (an import always creates a fresh row
+			// for them, so every row is trivially "new"). Where dedup is
+			// meaningful (e.g. CRM People, matched by e-mail), the target can
+			// classify a row without writing anything, which the writer
+			// itself cannot do here since dry-run never calls it.
+			'new'       => 0,
+			'existing'  => 0,
+			'duplicate' => 0,
 		);
+
+		$classifier = is_callable( $target['classifier'] ?? null ) ? $target['classifier'] : null;
 
 		foreach ( $rows as $index => $row ) {
 			$record = $this->apply_mapping( (array) $row, $mapping );
@@ -222,6 +234,15 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 
 			if ( $dry_run ) {
 				++$result['skipped'];
+
+				if ( null !== $classifier ) {
+					$classification = (string) call_user_func( $classifier, $record );
+
+					if ( isset( $result[ $classification ] ) && in_array( $classification, array( 'new', 'existing', 'duplicate' ), true ) ) {
+						++$result[ $classification ];
+					}
+				}
+
 				continue;
 			}
 

@@ -24,6 +24,7 @@ use EventOS\Import\Providers\WooCommerce_Provider;
 use EventOS\Job_Queue;
 use EventOS\Rest\Docs_Controller;
 use EventOS\Rest\Export_Controller;
+use EventOS\Rest\Import_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Search_Registry;
 use EventOS\Invitations;
@@ -76,7 +77,21 @@ final class Core_Module extends Abstract_Module {
 		Job_Queue::init();
 		Import_Engine::init();
 		Rest_Registry::init();
-		Export_Registry::bootstrap();
+
+		// Deferred to the `init` hook rather than called synchronously here:
+		// every module's own init() runs inside one `plugins_loaded` callback
+		// (see Plugin::register_modules()), in the fixed order Core, Platform,
+		// Events, WooCommerce, Crm — Core always runs first. Calling
+		// Export_Registry::bootstrap() here would fire its
+		// `eventos_register_exports` action before Events_Module/Crm_Module
+		// have reached their own init() and attached their
+		// add_action('eventos_register_exports', ...) listeners, so nothing
+		// they register would ever actually appear — the exact same
+		// ordering hazard Person_Backfill_Service's docblock documents for
+		// `eventos_register_jobs`, just not previously caught here because
+		// nothing had exercised these registrations at runtime yet. `init`
+		// fires once, later, after every module's init() has already run.
+		add_action( 'init', array( Export_Registry::class, 'bootstrap' ) );
 		Search_Registry::bootstrap();
 
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_providers' ) );
@@ -144,6 +159,67 @@ final class Core_Module extends Abstract_Module {
 					'callback'   => array( Export_Controller::class, 'download' ),
 					'envelope'   => false,
 					'summary'    => __( 'Download a registered export as CSV, JSON or PDF.', 'eventos' ),
+				),
+				array(
+					'route'      => '/exports',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => static function () {
+						return array( 'entities' => Export_Registry::describe() );
+					},
+					'summary'    => __( 'List exportable entities the current user may download.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/targets',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => static function () {
+						return Import_Controller::describe();
+					},
+					'summary'    => __( 'List importable entities and available providers.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/preview',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'preview' ),
+					'summary'    => __( 'Read-only sample of an import source.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/mapping',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'mapping' ),
+					'summary'    => __( 'Suggested field mapping for a source against a target entity.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/start',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'start' ),
+					'summary'    => __( 'Start (or dry-run) an import against a registered target.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/runs',
+					'methods'    => 'GET',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'runs' ),
+					'summary'    => __( 'Every import run, newest first.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/runs/(?P<id>\d+)',
+					'methods'    => 'GET',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'run' ),
+					'summary'    => __( 'A single import run.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/runs/(?P<id>\d+)/rollback',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Controller::class, 'rollback' ),
+					'log_action' => 'import_rolled_back',
+					'summary'    => __( 'Undo a completed import run.', 'eventos' ),
 				),
 			),
 			$this->slug()

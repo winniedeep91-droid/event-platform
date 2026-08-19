@@ -164,6 +164,46 @@ final class Guest_Repository {
 	}
 
 	/**
+	 * Partially update a guest's contact fields.
+	 *
+	 * Writes exactly the columns given — callers decide precedence (e.g.
+	 * never overwriting a real value with a blank one), matching the same
+	 * convention {@see \EventOS\Crm\Person_Repository::update()} uses.
+	 * Deliberately does not accept `status`/`tags` here — {@see set_status()}
+	 * and {@see update_tags()} already own those with their own validation.
+	 *
+	 * @param int                   $id   Guest ID.
+	 * @param array<string, mixed> $data Any of: name, email, phone.
+	 * @return void
+	 */
+	public function update( int $id, array $data ): void {
+		global $wpdb;
+
+		$allowed = array( 'name' => '%s', 'email' => '%s', 'phone' => '%s' );
+		$row     = array();
+		$formats = array();
+
+		foreach ( $data as $column => $value ) {
+			if ( ! isset( $allowed[ $column ] ) ) {
+				continue;
+			}
+
+			$row[ $column ] = $value;
+			$formats[]      = $allowed[ $column ];
+		}
+
+		if ( ! $row ) {
+			return;
+		}
+
+		$row['updated_at'] = current_time( 'mysql', true );
+		$formats[]          = '%s';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update( Event_Schema::guests(), $row, array( 'id' => $id ), $formats, array( '%d' ) );
+	}
+
+	/**
 	 * Update a guest's status.
 	 *
 	 * @param int    $id     Guest ID.

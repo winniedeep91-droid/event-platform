@@ -92,6 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { slug: "eventos-diagnostics", label: "Diagnostics" },
       { slug: "wc-diagnostics", label: "WooCommerce Diagnostics" },
+      { slug: "eventos-import-export", label: "Import / Export" },
       { slug: "eventos-sync", label: "Synchronisation" },
       { slug: "wc-sync", label: "WooCommerce Synchronisation" },
       { slug: "wc-webhooks", label: "Webhooks" },

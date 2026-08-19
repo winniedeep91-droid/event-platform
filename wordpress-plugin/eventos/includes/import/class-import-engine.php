@@ -52,7 +52,16 @@ final class Import_Engine {
 	 * @return void
 	 */
 	public static function init(): void {
-		Import_Registry::bootstrap();
+		// Deferred to `init` for the same reason Core_Module defers
+		// Export_Registry::bootstrap() — this method itself runs from inside
+		// Core_Module::init(), before Events_Module/Crm_Module have reached
+		// their own init() and attached their
+		// add_action('eventos_register_import_providers', ...) listeners
+		// (which is where those modules' import *targets* — not the built-in
+		// providers, which Import_Registry::bootstrap() registers directly —
+		// actually get added). Firing the action here would mean nothing
+		// they register ever appears at runtime.
+		add_action( 'init', array( Import_Registry::class, 'bootstrap' ) );
 
 		Job_Queue::register_handler(
 			self::JOB_TYPE,
@@ -116,6 +125,35 @@ final class Import_Engine {
 		$source = (array) ( $args['source'] ?? array() );
 		$entity = sanitize_key( (string) ( $args['entity'] ?? '' ) );
 
+		$target = Import_Registry::target( $entity );
+
+		if ( null === $target ) {
+			return new WP_Error(
+				'eventos_import_unknown_entity',
+				__( 'Unknown import target.', 'eventos' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		// Checked before anything about the source is resolved or validated —
+		// Neither Import_Registry nor this engine checked the target's own
+		// `capability` anywhere before this — Export_Service enforces the
+		// equivalent check for exports (see its `export()` method), but the
+		// import side never had a REST route wired up to reach it, so the
+		// gap was latent rather than exploitable. Closing it here rather
+		// than only in the REST controller protects every caller, present
+		// and future, not just one route. Checking capability first, ahead
+		// of provider detection/validation, also avoids leaking any
+		// information about a source's validity to a caller who isn't
+		// authorised to import into this target at all.
+		if ( ! current_user_can( (string) $target['capability'] ) ) {
+			return new WP_Error(
+				'eventos_forbidden',
+				__( 'You are not allowed to import this data.', 'eventos' ),
+				array( 'status' => rest_authorization_required_code() )
+			);
+		}
+
 		$provider = self::resolve( $source );
 
 		if ( is_wp_error( $provider ) ) {
@@ -126,14 +164,6 @@ final class Import_Engine {
 
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
-		}
-
-		if ( null === Import_Registry::target( $entity ) ) {
-			return new WP_Error(
-				'eventos_import_unknown_entity',
-				__( 'Unknown import target.', 'eventos' ),
-				array( 'status' => 404 )
-			);
 		}
 
 		$mapping = (array) ( $args['mapping'] ?? array() );
@@ -283,6 +313,16 @@ final class Import_Engine {
 
 		if ( null === $run ) {
 			return new WP_Error( 'eventos_import_unknown_run', __( 'Import run not found.', 'eventos' ), array( 'status' => 404 ) );
+		}
+
+		$target = Import_Registry::target( (string) $run['entity'] );
+
+		if ( null === $target || ! current_user_can( (string) $target['capability'] ) ) {
+			return new WP_Error(
+				'eventos_forbidden',
+				__( 'You are not allowed to modify this import.', 'eventos' ),
+				array( 'status' => rest_authorization_required_code() )
+			);
 		}
 
 		$provider = Import_Registry::provider( (string) $run['provider'] );

@@ -47,6 +47,7 @@ use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Ticketing_Controller;
 use EventOS\Search_Registry;
 use EventOS\Settings;
+use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -327,8 +328,6 @@ final class Events_Module extends Abstract_Module {
 		add_action( 'eventos_register_exports', array( $this, 'register_exports' ) );
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
-
-		Import_Registry::bootstrap();
 
 		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository() ) )->bootstrap();
 
@@ -642,6 +641,267 @@ final class Events_Module extends Abstract_Module {
 						return $this->ticketing_service()->report( $event_id )['revenue_by_ticket_type'];
 					},
 				),
+				array(
+					'entity'     => 'tickets',
+					'label'      => __( 'Tickets', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-tickets',
+					'columns'    => array(
+						'id'                => __( 'ID', 'eventos' ),
+						'ticket_number'     => __( 'Ticket number', 'eventos' ),
+						'event_title'       => __( 'Event', 'eventos' ),
+						'ticket_type_name'  => __( 'Ticket type', 'eventos' ),
+						'guest_name'        => __( 'Attendee', 'eventos' ),
+						'guest_email'       => __( 'Attendee email', 'eventos' ),
+						'status'            => __( 'Status', 'eventos' ),
+						'is_complimentary'  => __( 'Complimentary', 'eventos' ),
+						'checked_in'        => __( 'Checked in', 'eventos' ),
+						'checked_in_at'     => __( 'Checked in at', 'eventos' ),
+						'wc_order_id'       => __( 'Order', 'eventos' ),
+						'created_at'        => __( 'Issued', 'eventos' ),
+					),
+					// event_id filters to one event; omitted/0 exports every
+					// ticket in the install (Ticket_Repository::query() treats
+					// event_id=0 as "no filter" — see that method's docblock).
+					'provider'   => static function ( array $args ): array {
+						return ( new Ticket_Repository() )->query( array( 'event_id' => (int) ( $args['event_id'] ?? 0 ) ) );
+					},
+				),
+				array(
+					'entity'     => 'orders',
+					'label'      => __( 'Orders', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-orders',
+					'columns'    => array(
+						'wc_order_id'    => __( 'Order', 'eventos' ),
+						'event_title'    => __( 'Event', 'eventos' ),
+						'customer_name'  => __( 'Customer', 'eventos' ),
+						'customer_email' => __( 'Email', 'eventos' ),
+						'ticket_count'   => __( 'Tickets', 'eventos' ),
+						'total'          => __( 'Total', 'eventos' ),
+						'currency'       => __( 'Currency', 'eventos' ),
+						'status'         => __( 'Status', 'eventos' ),
+						'payment_method' => __( 'Payment', 'eventos' ),
+						'refund_total'   => __( 'Refunded', 'eventos' ),
+						'created_at'     => __( 'Date', 'eventos' ),
+					),
+					// Reuses Ticketing_Service::event_orders() — the exact same
+					// WooCommerce-order-reading path the per-event Orders tab
+					// and the existing 'event_orders' export already use — for
+					// every EventOS event, rather than duplicating order
+					// storage/lookup. Store-wide unless event_id narrows it.
+					'provider'   => function ( array $args ): array {
+						$event_id = (int) ( $args['event_id'] ?? 0 );
+						$events   = $event_id > 0
+							? array( array( 'id' => $event_id, 'title' => (string) ( $this->service()->events()->find( $event_id )['title'] ?? '' ) ) )
+							: $this->service()->events()->query( array( 'per_page' => 1000 ) )['items'];
+
+						$rows = array();
+
+						foreach ( $events as $event ) {
+							$orders = $this->ticketing_service()->event_orders( (int) $event['id'], array( 'per_page' => 1000 ) )['items'];
+
+							foreach ( $orders as $order ) {
+								$order['event_title']  = (string) $event['title'];
+								$order['refund_total'] = array_sum( array_column( (array) ( $order['refunds'] ?? array() ), 'amount' ) );
+								unset( $order['refunds'] );
+								$rows[] = $order;
+							}
+						}
+
+						return $rows;
+					},
+				),
+				array(
+					'entity'     => 'guests',
+					'label'      => __( 'Guests', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-guests',
+					'columns'    => array(
+						'id'               => __( 'ID', 'eventos' ),
+						'event_id'         => __( 'Event ID', 'eventos' ),
+						'name'             => __( 'Name', 'eventos' ),
+						'email'            => __( 'Email', 'eventos' ),
+						'phone'            => __( 'Phone', 'eventos' ),
+						'ticket_number'    => __( 'Ticket number', 'eventos' ),
+						'ticket_type_name' => __( 'Ticket type', 'eventos' ),
+						'status'           => __( 'Status', 'eventos' ),
+						'checked_in'       => __( 'Checked in', 'eventos' ),
+						'checked_in_at'    => __( 'Checked in at', 'eventos' ),
+						'tags'             => __( 'Tags', 'eventos' ),
+					),
+					'provider'   => function ( array $args ): array {
+						$event_id  = (int) ( $args['event_id'] ?? 0 );
+						$event_ids = $event_id > 0
+							? array( $event_id )
+							: array_column( $this->service()->events()->query( array( 'per_page' => 1000 ) )['items'], 'id' );
+
+						$guests = new Guest_Repository();
+						$rows   = array();
+
+						foreach ( $event_ids as $id ) {
+							foreach ( $guests->query( (int) $id, array( 'per_page' => 1000 ) )['items'] as $row ) {
+								unset( $row['notes'], $row['attendance_history'] );
+								$rows[] = $row;
+							}
+						}
+
+						return $rows;
+					},
+				),
+				array(
+					'entity'     => 'audiences',
+					'label'      => __( 'Marketing audiences', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-audiences',
+					'columns'    => array(
+						'id'             => __( 'ID', 'eventos' ),
+						'name'           => __( 'Name', 'eventos' ),
+						'description'    => __( 'Description', 'eventos' ),
+						'type'           => __( 'Type', 'eventos' ),
+						'scope'          => __( 'Scope', 'eventos' ),
+						'status'         => __( 'Status', 'eventos' ),
+						'criteria'       => __( 'Criteria', 'eventos' ),
+						'estimated_size' => __( 'Estimated size', 'eventos' ),
+						'created_at'     => __( 'Created', 'eventos' ),
+					),
+					// A live, resolved count at export time — never a stored
+					// membership list — per Audience_Resolver's own "the rule,
+					// not the result" design (see its class docblock).
+					'provider'   => function ( array $args ): array {
+						unset( $args );
+
+						$audiences = new Audience_Repository();
+						$resolver  = new Audience_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Segment_Repository() );
+						$events    = array_column( $this->service()->events()->query( array( 'per_page' => 1000 ) )['items'], 'title', 'id' );
+
+						return array_map(
+							static function ( array $audience ) use ( $resolver, $events ): array {
+								$audience['scope']          = null !== $audience['event_id'] ? ( $events[ $audience['event_id'] ] ?? '' ) : __( 'Global', 'eventos' );
+								$audience['criteria']       = wp_json_encode( $audience['criteria'] );
+								$audience['estimated_size'] = $resolver->count( $audience );
+
+								return $audience;
+							},
+							$audiences->all( array( 'include_archived' => true ) )
+						);
+					},
+				),
+				array(
+					'entity'     => 'campaigns',
+					'label'      => __( 'Marketing campaigns', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-campaigns',
+					'columns'    => array(
+						'id'                 => __( 'ID', 'eventos' ),
+						'event_title'        => __( 'Event', 'eventos' ),
+						'name'               => __( 'Name', 'eventos' ),
+						'code'               => __( 'Discount code', 'eventos' ),
+						'type'               => __( 'Discount type', 'eventos' ),
+						'value'              => __( 'Discount value', 'eventos' ),
+						'status'             => __( 'Status', 'eventos' ),
+						'audience_name'      => __( 'Audience', 'eventos' ),
+						'uses'               => __( 'Uses', 'eventos' ),
+						'expires_at'         => __( 'Expires', 'eventos' ),
+						'message_subject'    => __( 'Message subject', 'eventos' ),
+						'message_status'     => __( 'Message status', 'eventos' ),
+						'recipients_sent'    => __( 'Recipients sent', 'eventos' ),
+						'recipients_pending' => __( 'Recipients pending', 'eventos' ),
+						'recipients_failed'  => __( 'Recipients failed', 'eventos' ),
+						'created_at'         => __( 'Created', 'eventos' ),
+					),
+					// Deliberately excludes the recipient-by-recipient snapshot
+					// (real e-mail addresses, per-row delivery status) — only
+					// aggregate counts. That level of detail stays behind the
+					// same capability the Marketing tab's own recipient view
+					// already requires; exporting it in bulk here would be a
+					// meaningfully bigger PII exposure than this build intends.
+					'provider'   => function ( array $args ): array {
+						$event_id = (int) ( $args['event_id'] ?? 0 );
+						$events   = $event_id > 0
+							? array( array( 'id' => $event_id, 'title' => (string) ( $this->service()->events()->find( $event_id )['title'] ?? '' ) ) )
+							: $this->service()->events()->query( array( 'per_page' => 1000 ) )['items'];
+
+						$campaigns  = new Campaign_Repository( $this->ticketing_service()->ticket_types() );
+						$messages   = new Campaign_Message_Repository();
+						$recipients = new Campaign_Recipient_Repository();
+						$audiences  = new Audience_Repository();
+						$rows       = array();
+
+						foreach ( $events as $event ) {
+							foreach ( $campaigns->for_event( (int) $event['id'] ) as $campaign ) {
+								$campaign['event_title']   = (string) $event['title'];
+								$audience                   = null !== $campaign['audience_id'] ? $audiences->find( (int) $campaign['audience_id'] ) : null;
+								$campaign['audience_name'] = $audience['name'] ?? '';
+
+								$message                          = $messages->for_campaign( (int) $campaign['id'] );
+								$campaign['message_subject']      = $message['subject'] ?? '';
+								$campaign['message_status']       = $message['status'] ?? '';
+
+								$counts                              = $recipients->counts( (int) $campaign['id'] );
+								$campaign['recipients_sent']        = $counts['sent'];
+								$campaign['recipients_pending']     = $counts['pending'];
+								$campaign['recipients_failed']      = $counts['failed'];
+
+								unset( $campaign['ticket_type_ids'] );
+								$rows[] = $campaign;
+							}
+						}
+
+						return $rows;
+					},
+				),
+				array(
+					'entity'     => 'campaign_messages',
+					'label'      => __( 'Campaign messages', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::RUN_EXPORTS,
+					'filename'   => 'eventos-campaign-messages',
+					'columns'    => array(
+						'id'            => __( 'ID', 'eventos' ),
+						'campaign_id'   => __( 'Campaign ID', 'eventos' ),
+						'campaign_name' => __( 'Campaign', 'eventos' ),
+						'subject'       => __( 'Subject', 'eventos' ),
+						'preview_text'  => __( 'Preview text', 'eventos' ),
+						'sender_name'   => __( 'Sender name', 'eventos' ),
+						'sender_email'  => __( 'Sender email', 'eventos' ),
+						'reply_to'      => __( 'Reply-to', 'eventos' ),
+						'body_html'     => __( 'HTML body', 'eventos' ),
+						'body_text'     => __( 'Plain-text body', 'eventos' ),
+						'status'        => __( 'Status', 'eventos' ),
+						'created_at'    => __( 'Created', 'eventos' ),
+					),
+					'provider'   => function ( array $args ): array {
+						$event_id = (int) ( $args['event_id'] ?? 0 );
+						$events   = $event_id > 0
+							? array( $event_id )
+							: array_column( $this->service()->events()->query( array( 'per_page' => 1000 ) )['items'], 'id' );
+
+						$campaigns = new Campaign_Repository( $this->ticketing_service()->ticket_types() );
+						$messages  = new Campaign_Message_Repository();
+						$rows      = array();
+
+						foreach ( $events as $id ) {
+							foreach ( $campaigns->for_event( (int) $id ) as $campaign ) {
+								$message = $messages->for_campaign( (int) $campaign['id'] );
+
+								if ( null === $message ) {
+									continue;
+								}
+
+								$message['campaign_name'] = (string) $campaign['name'];
+								$rows[]                    = $message;
+							}
+						}
+
+						return $rows;
+					},
+				),
 			)
 		);
 	}
@@ -748,6 +1008,257 @@ final class Events_Module extends Abstract_Module {
 				},
 				'deleter'    => static function ( int $id ) use ( $service ) {
 					return $service->delete_artist( $id );
+				},
+			)
+		);
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'guests',
+				'label'      => __( 'Guests', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'ticket_number' => array( 'label' => __( 'Ticket number', 'eventos' ), 'required' => true, 'aliases' => array( 'ticket', 'ticket_no', 'ticket_code' ) ),
+					'name'          => array( 'label' => __( 'Name', 'eventos' ), 'aliases' => array( 'guest_name', 'full_name' ) ),
+					'email'         => array( 'label' => __( 'Email', 'eventos' ), 'type' => 'email', 'aliases' => array( 'guest_email' ) ),
+					'phone'         => array( 'label' => __( 'Phone', 'eventos' ), 'aliases' => array( 'mobile' ) ),
+				),
+				// A guest can only ever be imported onto an EXISTING ticket —
+				// this importer never creates a ticket (see the Tickets export
+				// target's docblock for why ticket import is deliberately not
+				// offered). If that ticket already has a guest, this only
+				// updates contact fields on the existing guest (never blanking
+				// a value the row left empty); if the ticket has none yet, a
+				// new guest is created and attached — the relationship is
+				// always resolved through a real ticket, so a guest import can
+				// never orphan a person or a ticket.
+				'writer'     => static function ( array $record ) {
+					$tickets = new Ticket_Repository();
+					$guests  = new Guest_Repository();
+
+					$ticket_number = trim( (string) ( $record['ticket_number'] ?? '' ) );
+					$ticket        = '' !== $ticket_number ? $tickets->find_by_code( $ticket_number ) : null;
+
+					if ( null === $ticket ) {
+						return new WP_Error( 'eventos_import_ticket_not_found', __( 'No ticket matches this ticket number — a guest cannot be imported without an existing ticket.', 'eventos' ) );
+					}
+
+					$name  = trim( (string) ( $record['name'] ?? '' ) );
+					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
+					$phone = trim( (string) ( $record['phone'] ?? '' ) );
+
+					if ( (int) $ticket['guest_id'] > 0 ) {
+						$updates = array();
+
+						if ( '' !== $name ) {
+							$updates['name'] = $name;
+						}
+
+						if ( '' !== $email ) {
+							$updates['email'] = $email;
+						}
+
+						if ( '' !== $phone ) {
+							$updates['phone'] = $phone;
+						}
+
+						if ( $updates ) {
+							$guests->update( (int) $ticket['guest_id'], $updates );
+						}
+
+						return (int) $ticket['guest_id'];
+					}
+
+					$guest = $guests->create(
+						array(
+							'event_id'       => (int) $ticket['event_id'],
+							'ticket_id'      => (int) $ticket['id'],
+							'wc_customer_id' => (int) $ticket['wc_customer_id'],
+							'name'           => $name,
+							'email'          => $email,
+							'phone'          => $phone,
+						)
+					);
+
+					$tickets->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+
+					return (int) $guest['id'];
+				},
+				// No deleter: the writer's return value is the same guest ID
+				// whether it just created a brand-new guest or only updated an
+				// already-existing one, and rollback cannot tell those two
+				// cases apart — deleting could destroy a guest record that
+				// existed before the import ran. Safer to report rollback as
+				// incomplete for these rows than to risk that.
+			)
+		);
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'audiences',
+				'label'      => __( 'Marketing audiences', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'name'           => array( 'label' => __( 'Name', 'eventos' ), 'required' => true ),
+					'description'    => array( 'label' => __( 'Description', 'eventos' ) ),
+					'type'           => array( 'label' => __( 'Type', 'eventos' ), 'required' => true ),
+					'event_slug'     => array( 'label' => __( 'Event slug', 'eventos' ), 'aliases' => array( 'event' ) ),
+					'ticket_type_id' => array( 'label' => __( 'Ticket type ID', 'eventos' ), 'type' => 'number' ),
+					'min_spend'      => array( 'label' => __( 'Minimum spend', 'eventos' ), 'type' => 'number' ),
+					'days'           => array( 'label' => __( 'Days', 'eventos' ), 'type' => 'number' ),
+					'segment_id'     => array( 'label' => __( 'CRM segment ID', 'eventos' ), 'type' => 'number' ),
+				),
+				// Only ever creates an audience *definition* — the rule, never
+				// a resolved people list — so this can never duplicate a CRM
+				// Person the way importing an actual membership list would.
+				// An event-scoped type requires a real, existing event
+				// (resolved by slug, never by trusting a raw imported ID); a
+				// 'segment' type requires a real, existing local segment —
+				// otherwise the row is rejected rather than silently creating
+				// an audience that would resolve to nothing or error later.
+				'writer'     => function ( array $record ) {
+					$type = trim( (string) ( $record['type'] ?? '' ) );
+
+					if ( ! in_array( $type, Audience_Repository::TYPES, true ) ) {
+						return new WP_Error(
+							'eventos_import_invalid_audience_type',
+							/* translators: %s: audience type. */
+							sprintf( __( '"%s" is not a valid audience type.', 'eventos' ), $type )
+						);
+					}
+
+					$event_id = null;
+
+					if ( in_array( $type, array( 'event_purchasers', 'event_ticket_type', 'event_attendees', 'event_non_attendees' ), true ) ) {
+						$slug  = trim( (string) ( $record['event_slug'] ?? '' ) );
+						$event = '' !== $slug ? $this->service()->events()->find_by_slug( $slug ) : null;
+
+						if ( null === $event ) {
+							return new WP_Error( 'eventos_import_event_not_found', __( 'An existing event_slug is required for this audience type.', 'eventos' ) );
+						}
+
+						$event_id = (int) $event['id'];
+					}
+
+					$criteria = array();
+
+					if ( 'event_ticket_type' === $type ) {
+						$criteria['ticket_type_id'] = (int) ( $record['ticket_type_id'] ?? 0 );
+					} elseif ( 'high_value' === $type ) {
+						$criteria['min_spend'] = (float) ( $record['min_spend'] ?? 0 );
+					} elseif ( in_array( $type, array( 'recent_purchasers', 'lapsed_customers' ), true ) ) {
+						$criteria['days'] = (int) ( $record['days'] ?? 0 );
+					} elseif ( 'segment' === $type ) {
+						$segment_id = (int) ( $record['segment_id'] ?? 0 );
+
+						if ( $segment_id <= 0 || null === ( new Segment_Repository() )->find( $segment_id ) ) {
+							return new WP_Error( 'eventos_import_segment_not_found', __( 'An existing segment_id is required for a segment audience.', 'eventos' ) );
+						}
+
+						$criteria['segment_id'] = $segment_id;
+					}
+
+					$created = ( new Audience_Repository() )->create(
+						array(
+							'name'        => (string) ( $record['name'] ?? '' ),
+							'description' => (string) ( $record['description'] ?? '' ),
+							'type'        => $type,
+							'event_id'    => $event_id,
+							'criteria'    => $criteria,
+						)
+					);
+
+					return is_wp_error( $created ) ? $created : (int) $created['id'];
+				},
+				'deleter'    => static function ( $id ) {
+					// Audiences are always soft-deleted (archive) — never a
+					// destructive removal — so this is safe to run on rollback
+					// unconditionally, unlike the Guests/People targets above.
+					return true === ( new Audience_Repository() )->archive( (int) $id );
+				},
+			)
+		);
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'campaigns',
+				'label'      => __( 'Marketing campaigns', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'event_slug'           => array( 'label' => __( 'Event slug', 'eventos' ), 'required' => true, 'aliases' => array( 'event' ) ),
+					'name'                 => array( 'label' => __( 'Name', 'eventos' ), 'required' => true ),
+					'code'                 => array( 'label' => __( 'Discount code', 'eventos' ), 'required' => true ),
+					'type'                 => array( 'label' => __( 'Discount type', 'eventos' ), 'aliases' => array( 'discount_type' ) ),
+					'value'                => array( 'label' => __( 'Discount value', 'eventos' ), 'type' => 'number' ),
+					'message_subject'      => array( 'label' => __( 'Message subject', 'eventos' ) ),
+					'message_sender_name'  => array( 'label' => __( 'Message sender name', 'eventos' ) ),
+					'message_sender_email' => array( 'label' => __( 'Message sender email', 'eventos' ), 'type' => 'email' ),
+					'message_body_html'    => array( 'label' => __( 'Message HTML body', 'eventos' ) ),
+				),
+				// Every imported campaign starts 'draft' — Campaign_Repository
+				// ::create()'s own default, and this writer never passes a
+				// 'status' key, so an imported campaign's coupon is never live
+				// at checkout until a human reviews and activates it. Same
+				// principle for the optional inline message: saved (if
+				// present) but never prepared or sent — Campaign_Message_
+				// Repository::save() defaults a new message to 'draft' too,
+				// and this writer never calls prepare()/send_now(). No
+				// recipient snapshot rows are ever created by an import, so a
+				// historical campaign can never generate pending sends purely
+				// by being imported — that requires a deliberate, separate
+				// "Prepare recipients" action from the Marketing tab.
+				'writer'     => function ( array $record ) {
+					$slug  = trim( (string) ( $record['event_slug'] ?? '' ) );
+					$event = '' !== $slug ? $this->service()->events()->find_by_slug( $slug ) : null;
+
+					if ( null === $event ) {
+						return new WP_Error( 'eventos_import_event_not_found', __( 'An existing event_slug is required to import a campaign.', 'eventos' ) );
+					}
+
+					$campaigns = new Campaign_Repository( $this->ticketing_service()->ticket_types() );
+
+					$created = $campaigns->create(
+						(int) $event['id'],
+						array(
+							'name'  => (string) ( $record['name'] ?? '' ),
+							'code'  => (string) ( $record['code'] ?? '' ),
+							'type'  => 'fixed' === (string) ( $record['type'] ?? 'percent' ) ? 'fixed' : 'percent',
+							'value' => (float) ( $record['value'] ?? 0 ),
+						)
+					);
+
+					if ( is_wp_error( $created ) ) {
+						return $created;
+					}
+
+					$campaign_id = (int) $created['id'];
+					$subject     = trim( (string) ( $record['message_subject'] ?? '' ) );
+					$body_html   = trim( (string) ( $record['message_body_html'] ?? '' ) );
+
+					if ( '' !== $subject && '' !== $body_html ) {
+						( new Campaign_Message_Repository() )->save(
+							$campaign_id,
+							array(
+								'subject'      => $subject,
+								'sender_name'  => (string) ( $record['message_sender_name'] ?? '' ),
+								'sender_email' => (string) ( $record['message_sender_email'] ?? '' ),
+								'body_html'    => $body_html,
+							)
+						);
+					}
+
+					return $campaign_id;
+				},
+				'deleter'    => function ( $id ) {
+					// archive() only ever soft-archives the campaign and
+					// unpublishes its WooCommerce coupon draft — never a
+					// destructive delete — so it is safe on rollback.
+					$result = ( new Campaign_Repository( $this->ticketing_service()->ticket_types() ) )->archive( (int) $id );
+
+					return ! is_wp_error( $result );
 				},
 			)
 		);

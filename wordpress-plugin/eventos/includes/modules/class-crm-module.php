@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
+use EventOS\Capabilities;
 use EventOS\Crm\Crm_Capabilities;
 use EventOS\Crm\Person_Backfill_Service;
 use EventOS\Crm\Person_Consent_Repository;
@@ -23,8 +24,11 @@ use EventOS\Crm\Person_Service;
 use EventOS\Crm\Person_Tag_Repository;
 use EventOS\Crm\Person_Timeline_Service;
 use EventOS\Crm\Segment_Repository;
+use EventOS\Export\Export_Registry;
+use EventOS\Import\Import_Registry;
 use EventOS\Rest\Person_Controller;
 use EventOS\Rest\Rest_Registry;
+use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -202,6 +206,8 @@ final class Crm_Module extends Abstract_Module {
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 		add_action( 'eventos_ticket_order_fulfilled', array( $this, 'handle_ticket_order_fulfilled' ), 10, 5 );
+		add_action( 'eventos_register_exports', array( $this, 'register_exports' ) );
+		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
 	}
 
 	/**
@@ -266,5 +272,161 @@ final class Crm_Module extends Abstract_Module {
 		);
 
 		Rest_Registry::register_many( $controller->endpoints(), $this->slug() );
+	}
+
+	/**
+	 * Register CRM People as an exportable entity.
+	 *
+	 * Deliberately omits internal identifiers a spreadsheet consumer has no
+	 * use for (no wc_customer_id, no raw identity rows) and exposes the
+	 * marketing-consent state as a derived, human-readable status rather than
+	 * dumping the full grant/revoke history — the authoritative history stays
+	 * on the CRM consent screen; this is a snapshot for backup/analysis.
+	 *
+	 * @return void
+	 */
+	public function register_exports(): void {
+		$persons = new Person_Repository();
+		$consent = new Person_Consent_Repository();
+
+		Export_Registry::register(
+			array(
+				'entity'     => 'people',
+				'label'      => __( 'CRM People', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_EXPORTS,
+				'filename'   => 'eventos-people',
+				'columns'    => array(
+					'id'                      => __( 'ID', 'eventos' ),
+					'display_name'            => __( 'Name', 'eventos' ),
+					'first_name'              => __( 'First name', 'eventos' ),
+					'last_name'               => __( 'Last name', 'eventos' ),
+					'primary_email'           => __( 'Email', 'eventos' ),
+					'primary_phone'           => __( 'Phone', 'eventos' ),
+					'location'                => __( 'Location', 'eventos' ),
+					'marketing_consent'       => __( 'Marketing consent', 'eventos' ),
+					'total_events_attended'   => __( 'Events attended', 'eventos' ),
+					'total_tickets_purchased' => __( 'Tickets purchased', 'eventos' ),
+					'total_spend'             => __( 'Lifetime spend', 'eventos' ),
+					'last_purchase_at'        => __( 'Last purchase', 'eventos' ),
+					'created_at'              => __( 'Known since', 'eventos' ),
+				),
+				'provider'   => static function ( array $args ) use ( $persons, $consent ): array {
+					unset( $args );
+
+					return array_map(
+						static function ( array $person ) use ( $consent ): array {
+							$id = (int) $person['id'];
+
+							if ( $consent->has_active( $id, 'email' ) ) {
+								$status = 'granted';
+							} elseif ( $consent->was_ever_granted( $id, 'email' ) ) {
+								$status = 'revoked';
+							} else {
+								$status = 'unknown';
+							}
+
+							$person['marketing_consent'] = $status;
+
+							return $person;
+						},
+						$persons->query()
+					);
+				},
+			)
+		);
+	}
+
+	/**
+	 * Register CRM People as an importable entity.
+	 *
+	 * The writer resolves an existing Person by e-mail through the same
+	 * {@see Person_Resolver} the live ticket-purchase pipeline already uses
+	 * — an imported row is never a second identity-resolution mechanism, it
+	 * just feeds the one that already exists. Consent is the one field this
+	 * writer treats specially: it only ever GRANTS, and only when the Person
+	 * has never had any consent record for the channel before — an import
+	 * can never silently re-grant someone who explicitly unsubscribed
+	 * (`was_ever_granted()` would already be true for them), and it can
+	 * never downgrade someone with an existing active grant either (nothing
+	 * to do in that case). See Person_Consent_Repository's "history, not
+	 * state" model — this writer adds history, it never rewrites it.
+	 *
+	 * @return void
+	 */
+	public function register_import_targets(): void {
+		$persons    = new Person_Repository();
+		$identities = new Person_Identity_Repository();
+		$resolver   = new Person_Resolver( $persons, $identities, new Person_Timeline_Service() );
+		$consent    = new Person_Consent_Repository();
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'people',
+				'label'      => __( 'CRM People', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'email'       => array( 'label' => __( 'Email', 'eventos' ), 'required' => true, 'type' => 'email', 'aliases' => array( 'primary_email', 'e-mail' ) ),
+					'first_name'  => array( 'label' => __( 'First name', 'eventos' ), 'aliases' => array( 'firstname', 'given_name' ) ),
+					'last_name'   => array( 'label' => __( 'Last name', 'eventos' ), 'aliases' => array( 'lastname', 'surname', 'family_name' ) ),
+					'name'        => array( 'label' => __( 'Full name', 'eventos' ), 'aliases' => array( 'display_name', 'full_name' ) ),
+					'phone'       => array( 'label' => __( 'Phone', 'eventos' ), 'aliases' => array( 'primary_phone', 'mobile' ) ),
+					'location'    => array( 'label' => __( 'Location', 'eventos' ), 'aliases' => array( 'city' ) ),
+					'consent'     => array( 'label' => __( 'Marketing consent (yes/no)', 'eventos' ), 'aliases' => array( 'marketing_consent', 'opt_in' ) ),
+					'source'      => array( 'label' => __( 'Source', 'eventos' ), 'aliases' => array( 'origin' ) ),
+				),
+				'writer'     => static function ( array $record ) use ( $resolver, $consent ) {
+					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
+
+					if ( '' === $email || ! is_email( $email ) ) {
+						return new WP_Error( 'eventos_import_invalid_email', __( 'A valid email is required to import a person.', 'eventos' ) );
+					}
+
+					$name = trim( (string) ( $record['name'] ?? '' ) );
+
+					if ( '' === $name ) {
+						$name = trim( (string) ( $record['first_name'] ?? '' ) . ' ' . (string) ( $record['last_name'] ?? '' ) );
+					}
+
+					$result = $resolver->find_or_create(
+						array(
+							'email'     => $email,
+							'name'      => $name,
+							'phone'     => (string) ( $record['phone'] ?? '' ),
+							'source'    => '' !== trim( (string) ( $record['source'] ?? '' ) ) ? (string) $record['source'] : 'import',
+							'source_id' => '',
+						)
+					);
+
+					$person_id = (int) $result['person']['id'];
+
+					$wants_consent = in_array(
+						strtolower( trim( (string) ( $record['consent'] ?? '' ) ) ),
+						array( 'yes', 'true', '1', 'granted', 'opted_in', 'opt_in' ),
+						true
+					);
+
+					if ( $wants_consent && ! $consent->was_ever_granted( $person_id, 'email' ) ) {
+						$consent->grant( $person_id, 'email', 'import' );
+					}
+
+					return $person_id;
+				},
+				// Preview-only: lets a dry-run report "new" vs "existing"
+				// without writing anything, mirroring the same e-mail lookup
+				// the real writer uses — see Abstract_Import_Provider::import()'s
+				// optional 'classifier' support. No deleter is registered
+				// (see the writer's docblock above): rollback cannot tell
+				// "created" apart from "updated an existing Person" from the
+				// writer's return value alone, and deleting could destroy a
+				// pre-existing CRM contact.
+				'classifier' => static function ( array $record ) use ( $persons ): string {
+					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
+
+					return '' !== $email && null !== $persons->find_by_primary_email( $email ) ? 'existing' : 'new';
+				},
+			)
+		);
 	}
 }

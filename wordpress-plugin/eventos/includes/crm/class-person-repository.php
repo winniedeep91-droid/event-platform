@@ -194,6 +194,34 @@ final class Person_Repository {
 	}
 
 	/**
+	 * Every Person, newest first — the export/reporting accessor this
+	 * repository otherwise has no reason to expose (day-to-day CRM reads go
+	 * through {@see Person_Service}'s richer, paginated queries). Kept
+	 * intentionally simple: no filtering beyond an optional limit, since the
+	 * only current caller is the People export provider.
+	 *
+	 * @param array<string, mixed> $args Optional: 'limit' (0 = no limit).
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function query( array $args = array() ): array {
+		global $wpdb;
+
+		$table = Person_Schema::persons();
+		$limit = max( 0, (int) ( $args['limit'] ?? 0 ) );
+		$sql   = "SELECT * FROM {$table} ORDER BY id ASC";
+
+		if ( $limit > 0 ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql . ' LIMIT %d', $limit ), ARRAY_A );
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$rows = $wpdb->get_results( $sql, ARRAY_A );
+		}
+
+		return array_map( array( $this, 'hydrate' ), (array) $rows );
+	}
+
+	/**
 	 * Shape a raw row for internal consumers.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

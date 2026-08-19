@@ -15,6 +15,7 @@ import {
   AuditView,
   BrandingView,
   DiagnosticsView,
+  ImportExportView,
   NotificationsView,
   OrganisationSettingsView,
   SyncView,
@@ -88,6 +89,8 @@ export function AdminApp({ view }: { view: string }) {
     content = <SyncView />;
   } else if (view === "platform/diagnostics") {
     content = <DiagnosticsView />;
+  } else if (view === "platform/import-export") {
+    content = <ImportExportView />;
   } else if (view === "platform/settings") {
     content = <OrganisationSettingsView />;
 

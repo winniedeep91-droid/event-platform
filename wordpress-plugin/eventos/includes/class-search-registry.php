@@ -213,6 +213,10 @@ final class Search_Registry {
 			);
 		}
 
+		if ( '' !== $args['term'] ) {
+			$items = self::rank( $items, $args['term'] );
+		}
+
 		return array(
 			'items'    => $items,
 			'total'    => (int) ( $result['total'] ?? count( $items ) ),
@@ -256,6 +260,44 @@ final class Search_Registry {
 		}
 
 		return $groups;
+	}
+
+	/**
+	 * Re-order one entity's already-fetched page of results so closer matches
+	 * against the search term sort first: an exact title match, then a
+	 * title that starts with the term, then everything else (already
+	 * filtered to matching rows by the entity's own query — this only
+	 * orders within that one page, it doesn't re-query the database).
+	 *
+	 * @param array<int, array<string, mixed>> $items Result items, already shaped.
+	 * @param string                            $term  Search term.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function rank( array $items, string $term ): array {
+		$term = strtolower( $term );
+
+		$score = static function ( array $item ) use ( $term ): int {
+			$title = strtolower( (string) $item['title'] );
+
+			if ( $title === $term ) {
+				return 0;
+			}
+
+			if ( str_starts_with( $title, $term ) ) {
+				return 1;
+			}
+
+			return 2;
+		};
+
+		usort(
+			$items,
+			static function ( array $a, array $b ) use ( $score ): int {
+				return $score( $a ) <=> $score( $b );
+			}
+		);
+
+		return $items;
 	}
 
 	/**

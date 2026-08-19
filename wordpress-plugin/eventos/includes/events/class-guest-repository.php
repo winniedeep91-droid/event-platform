@@ -107,6 +107,42 @@ final class Guest_Repository {
 	}
 
 	/**
+	 * Search guests across every event by name/email/ticket number — the
+	 * cross-event counterpart to {@see query()}, which is scoped to one
+	 * event by design (a guest list always belongs to an event). Reuses the
+	 * same {@see select()}/{@see count()} helpers, just without the
+	 * `event_id` constraint, so the join/hydration stays identical to the
+	 * per-event listing. Requires a non-empty term — an unbounded scan of
+	 * every guest across every event is never a useful "browse" result.
+	 *
+	 * @param array<string, mixed> $args Accepted: term, page, per_page.
+	 * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int}
+	 */
+	public function search_all( array $args = array() ): array {
+		$args     = wp_parse_args( $args, array( 'term' => '', 'page' => 1, 'per_page' => 20 ) );
+		$term     = trim( (string) $args['term'] );
+		$per_page = max( 1, min( 100, (int) $args['per_page'] ) );
+		$page     = max( 1, (int) $args['page'] );
+
+		if ( '' === $term ) {
+			return array( 'items' => array(), 'total' => 0, 'page' => $page, 'per_page' => $per_page );
+		}
+
+		global $wpdb;
+
+		$like   = '%' . $wpdb->esc_like( $term ) . '%';
+		$where  = '(g.name LIKE %s OR g.email LIKE %s OR t.ticket_number LIKE %s)';
+		$params = array( $like, $like, $like );
+
+		return array(
+			'items'    => $this->select( $where, $params, $per_page, ( $page - 1 ) * $per_page ),
+			'total'    => $this->count( $where, $params ),
+			'page'     => $page,
+			'per_page' => $per_page,
+		);
+	}
+
+	/**
 	 * Query guests for an event with search, filters and pagination.
 	 *
 	 * Accepted args: search, status, checked_in (bool|null), page, per_page.
@@ -400,15 +436,17 @@ final class Guest_Repository {
 		$guests  = Event_Schema::guests();
 		$tickets = Event_Schema::tickets();
 		$types   = Event_Schema::ticket_types();
+		$events  = Event_Schema::events();
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT g.*, t.ticket_number, t.checked_in, t.checked_in_at, t.checked_in_by, t.is_complimentary, t.wc_order_id,
-					tt.id AS ticket_type_id, tt.name AS ticket_type_name
+					tt.id AS ticket_type_id, tt.name AS ticket_type_name, e.title AS event_title
 				FROM {$guests} g
 				INNER JOIN {$tickets} t ON t.id = g.ticket_id
 				LEFT JOIN {$types} tt ON tt.id = t.ticket_type_id
+				LEFT JOIN {$events} e ON e.id = g.event_id
 				WHERE {$where}
 				ORDER BY g.created_at DESC, g.id DESC
 				LIMIT %d OFFSET %d",
@@ -432,6 +470,7 @@ final class Guest_Repository {
 		return array(
 			'id'                  => (int) $row['id'],
 			'event_id'            => (int) $row['event_id'],
+			'event_title'         => (string) ( $row['event_title'] ?? '' ),
 			'ticket_id'           => (int) $row['ticket_id'],
 			'wc_order_id'         => (int) $row['wc_order_id'],
 			'ticket_type_id'      => (int) $row['ticket_type_id'],

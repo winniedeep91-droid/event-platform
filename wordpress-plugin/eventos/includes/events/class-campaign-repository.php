@@ -434,6 +434,63 @@ final class Campaign_Repository {
 	}
 
 	/**
+	 * Search campaigns across every event by name or discount code — the
+	 * cross-event counterpart to {@see for_event()}. Requires a non-empty
+	 * term.
+	 *
+	 * @param array<string, mixed> $args Accepted: term, page, per_page.
+	 * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int}
+	 */
+	public function search_all( array $args = array() ): array {
+		$args     = wp_parse_args( $args, array( 'term' => '', 'page' => 1, 'per_page' => 20 ) );
+		$term     = trim( (string) $args['term'] );
+		$per_page = max( 1, min( 100, (int) $args['per_page'] ) );
+		$page     = max( 1, (int) $args['page'] );
+
+		if ( '' === $term ) {
+			return array( 'items' => array(), 'total' => 0, 'page' => $page, 'per_page' => $per_page );
+		}
+
+		global $wpdb;
+
+		$campaigns = Event_Schema::campaigns();
+		$events    = Event_Schema::events();
+
+		$like   = '%' . $wpdb->esc_like( $term ) . '%';
+		$where  = '(c.name LIKE %s OR c.code LIKE %s)';
+		$params = array( $like, $like );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$campaigns} c WHERE {$where}", $params ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT c.*, e.title AS event_title FROM {$campaigns} c LEFT JOIN {$events} e ON e.id = c.event_id WHERE {$where} ORDER BY c.created_at DESC LIMIT %d OFFSET %d",
+				array_merge( $params, array( $per_page, ( $page - 1 ) * $per_page ) )
+			),
+			ARRAY_A
+		);
+
+		$items = array_map(
+			function ( array $row ): array {
+				$hydrated                = $this->hydrate( $row );
+				$hydrated['event_title'] = (string) ( $row['event_title'] ?? '' );
+
+				return $hydrated;
+			},
+			(array) $rows
+		);
+
+		return array(
+			'items'    => $items,
+			'total'    => $total,
+			'page'     => $page,
+			'per_page' => $per_page,
+		);
+	}
+
+	/**
 	 * Shape a raw row into the DiscountCampaign contract.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

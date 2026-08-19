@@ -47,6 +47,7 @@ use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Ticketing_Controller;
 use EventOS\Search_Registry;
 use EventOS\Settings;
+use EventOS\WooCommerce;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -500,6 +501,198 @@ final class Events_Module extends Abstract_Module {
 										'title'    => $artist['name'],
 										'subtitle' => implode( ', ', (array) $artist['genres'] ),
 										'url'      => admin_url( 'admin.php?page=eventos-artists&artist=' . $artist['id'] ),
+									);
+								},
+								$result['items']
+							),
+							'total' => $result['total'],
+						);
+					},
+				),
+				array(
+					'entity'     => 'guests',
+					'label'      => __( 'Guests', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Event_Capabilities::VIEW_EVENTS,
+					'icon'       => 'ticket',
+					'searchable' => array( 'name', 'email', 'ticket_number' ),
+					'query'      => static function ( array $args ): array {
+						$result = ( new Guest_Repository() )->search_all(
+							array(
+								'term'     => (string) ( $args['term'] ?? '' ),
+								'page'     => (int) ( $args['page'] ?? 1 ),
+								'per_page' => (int) ( $args['per_page'] ?? 20 ),
+							)
+						);
+
+						return array(
+							'items' => array_map(
+								static function ( array $guest ): array {
+									// The event name disambiguates same-named
+									// guests attending different events — a
+									// bare name alone would be ambiguous.
+									return array(
+										'id'       => $guest['id'],
+										'title'    => (string) $guest['name'],
+										'subtitle' => trim( (string) $guest['event_title'] . ' · ' . (string) $guest['ticket_type_name'] ),
+										'status'   => $guest['status'],
+										'url'      => admin_url( 'admin.php?page=eventos-events-list&event=' . $guest['event_id'] . '&tab=guests' ),
+									);
+								},
+								$result['items']
+							),
+							'total' => $result['total'],
+						);
+					},
+				),
+				array(
+					'entity'     => 'tickets',
+					'label'      => __( 'Tickets', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Event_Capabilities::VIEW_EVENTS,
+					'icon'       => 'ticket',
+					'searchable' => array( 'ticket_number', 'guest_name', 'guest_email' ),
+					'query'      => static function ( array $args ): array {
+						$result = ( new Ticket_Repository() )->search_all(
+							array(
+								'term'     => (string) ( $args['term'] ?? '' ),
+								'page'     => (int) ( $args['page'] ?? 1 ),
+								'per_page' => (int) ( $args['per_page'] ?? 20 ),
+							)
+						);
+
+						return array(
+							'items' => array_map(
+								static function ( array $ticket ): array {
+									$attendee = '' !== $ticket['guest_name'] ? (string) $ticket['guest_name'] : __( 'Unassigned', 'eventos' );
+
+									return array(
+										'id'       => $ticket['id'],
+										'title'    => (string) $ticket['ticket_number'],
+										'subtitle' => trim( (string) $ticket['event_title'] . ' · ' . (string) $ticket['ticket_type_name'] . ' · ' . $attendee ),
+										'status'   => $ticket['status'],
+										'url'      => admin_url( 'admin.php?page=eventos-events-list&event=' . $ticket['event_id'] . '&tab=ticketing' ),
+									);
+								},
+								$result['items']
+							),
+							'total' => $result['total'],
+						);
+					},
+				),
+				array(
+					'entity'     => 'orders',
+					'label'      => __( 'Orders', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'icon'       => 'receipt',
+					'searchable' => array( 'order_number', 'billing_name', 'billing_email' ),
+					'query'      => static function ( array $args ): array {
+						$term = trim( (string) ( $args['term'] ?? '' ) );
+
+						if ( '' === $term || ! WooCommerce::is_active() ) {
+							return array( 'items' => array(), 'total' => 0 );
+						}
+
+						$per_page = max( 1, min( 100, (int) ( $args['per_page'] ?? 20 ) ) );
+						$page     = max( 1, (int) ( $args['page'] ?? 1 ) );
+
+						$result = wc_get_orders(
+							array(
+								's'        => $term,
+								'limit'    => $per_page,
+								'page'     => $page,
+								'paginate' => true,
+								'orderby'  => 'date',
+								'order'    => 'DESC',
+								'return'   => 'objects',
+							)
+						);
+
+						$order_ids = array_map(
+							static function ( $order ): int {
+								return $order->get_id();
+							},
+							$result->orders
+						);
+
+						// One batched lookup for every order's EventOS event,
+						// rather than a query per result row.
+						$events_by_order = array();
+
+						if ( $order_ids ) {
+							global $wpdb;
+
+							$tickets_table = Event_Schema::tickets();
+							$events_table  = Event_Schema::events();
+							$placeholders  = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+
+							// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
+							$rows = $wpdb->get_results(
+								$wpdb->prepare(
+									"SELECT DISTINCT t.wc_order_id, t.event_id, e.title FROM {$tickets_table} t INNER JOIN {$events_table} e ON e.id = t.event_id WHERE t.wc_order_id IN ({$placeholders})",
+									$order_ids
+								),
+								ARRAY_A
+							);
+
+							foreach ( (array) $rows as $row ) {
+								$events_by_order[ (int) $row['wc_order_id'] ] = array(
+									'event_id' => (int) $row['event_id'],
+									'title'    => (string) $row['title'],
+								);
+							}
+						}
+
+						return array(
+							'items' => array_map(
+								static function ( $order ) use ( $events_by_order ): array {
+									$order_id = $order->get_id();
+									$name     = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+									$event    = $events_by_order[ $order_id ] ?? null;
+
+									return array(
+										'id'       => $order_id,
+										'title'    => '#' . $order->get_order_number(),
+										'subtitle' => trim( $name . ( null !== $event ? ' · ' . $event['title'] : '' ) ),
+										'status'   => $order->get_status(),
+										'url'      => null !== $event
+											? admin_url( 'admin.php?page=eventos-events-list&event=' . $event['event_id'] . '&tab=orders' )
+											: admin_url( 'admin.php?page=wc-orders' ),
+									);
+								},
+								$result->orders
+							),
+							'total' => (int) $result->total,
+						);
+					},
+				),
+				array(
+					'entity'     => 'campaigns',
+					'label'      => __( 'Campaigns', 'eventos' ),
+					'module'     => $this->slug(),
+					'capability' => Event_Capabilities::VIEW_EVENTS,
+					'icon'       => 'megaphone',
+					'searchable' => array( 'name', 'code' ),
+					'query'      => function ( array $args ): array {
+						$campaigns = new Campaign_Repository( $this->ticketing_service()->ticket_types() );
+						$result    = $campaigns->search_all(
+							array(
+								'term'     => (string) ( $args['term'] ?? '' ),
+								'page'     => (int) ( $args['page'] ?? 1 ),
+								'per_page' => (int) ( $args['per_page'] ?? 20 ),
+							)
+						);
+
+						return array(
+							'items' => array_map(
+								static function ( array $campaign ): array {
+									return array(
+										'id'       => $campaign['id'],
+										'title'    => (string) $campaign['name'],
+										'subtitle' => trim( (string) $campaign['event_title'] . ' · ' . (string) $campaign['code'] ),
+										'status'   => $campaign['status'],
+										'url'      => admin_url( 'admin.php?page=eventos-events-list&event=' . $campaign['event_id'] . '&tab=marketing' ),
 									);
 								},
 								$result['items']

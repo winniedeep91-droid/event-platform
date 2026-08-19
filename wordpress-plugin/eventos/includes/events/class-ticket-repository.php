@@ -582,6 +582,83 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Search tickets across every event by ticket number or attendee name/
+	 * email — the paginated, totaled counterpart to {@see query()}, which
+	 * returns an unbounded flat list built only for the export path.
+	 * Requires a non-empty term.
+	 *
+	 * @param array<string, mixed> $args Accepted: term, page, per_page.
+	 * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int}
+	 */
+	public function search_all( array $args = array() ): array {
+		$args     = wp_parse_args( $args, array( 'term' => '', 'page' => 1, 'per_page' => 20 ) );
+		$term     = trim( (string) $args['term'] );
+		$per_page = max( 1, min( 100, (int) $args['per_page'] ) );
+		$page     = max( 1, (int) $args['page'] );
+
+		if ( '' === $term ) {
+			return array( 'items' => array(), 'total' => 0, 'page' => $page, 'per_page' => $per_page );
+		}
+
+		global $wpdb;
+
+		$tickets      = Event_Schema::tickets();
+		$ticket_types = Event_Schema::ticket_types();
+		$events       = Event_Schema::events();
+		$guests       = Event_Schema::guests();
+
+		$like   = '%' . $wpdb->esc_like( $term ) . '%';
+		$where  = '(t.ticket_number LIKE %s OR g.name LIKE %s OR g.email LIKE %s)';
+		$params = array( $like, $like, $like );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$total = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$tickets} t LEFT JOIN {$guests} g ON g.id = t.guest_id WHERE {$where}",
+				$params
+			)
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT t.*, tt.name AS ticket_type_name, e.title AS event_title, e.slug AS event_slug,
+					g.name AS guest_name, g.email AS guest_email
+				FROM {$tickets} t
+				LEFT JOIN {$ticket_types} tt ON tt.id = t.ticket_type_id
+				LEFT JOIN {$events} e ON e.id = t.event_id
+				LEFT JOIN {$guests} g ON g.id = t.guest_id
+				WHERE {$where}
+				ORDER BY t.id DESC
+				LIMIT %d OFFSET %d",
+				array_merge( $params, array( $per_page, ( $page - 1 ) * $per_page ) )
+			),
+			ARRAY_A
+		);
+
+		$items = array_map(
+			function ( array $row ): array {
+				$hydrated                     = $this->hydrate( $row );
+				$hydrated['ticket_type_name'] = (string) ( $row['ticket_type_name'] ?? '' );
+				$hydrated['event_title']      = (string) ( $row['event_title'] ?? '' );
+				$hydrated['event_slug']       = (string) ( $row['event_slug'] ?? '' );
+				$hydrated['guest_name']       = (string) ( $row['guest_name'] ?? '' );
+				$hydrated['guest_email']      = (string) ( $row['guest_email'] ?? '' );
+
+				return $hydrated;
+			},
+			(array) $rows
+		);
+
+		return array(
+			'items'    => $items,
+			'total'    => $total,
+			'page'     => $page,
+			'per_page' => $per_page,
+		);
+	}
+
+	/**
 	 * Shape a raw row for internal consumers.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

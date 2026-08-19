@@ -14,12 +14,25 @@ export interface ModalProps extends StyleProps {
 }
 
 /** Focus-trapped modal dialog. */
-export function Modal({ open, onClose, title, description, footer, size = "md", children, className, style }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  footer,
+  size = "md",
+  children,
+  className,
+  style,
+}: ModalProps) {
   const ref = useOverlayBehaviour(open, onClose);
   if (!open) return null;
 
   return (
-    <div className="eos-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="eos-overlay eos-overlay--center"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div
         ref={ref}
         role="dialog"
@@ -55,12 +68,25 @@ export interface DrawerProps extends StyleProps {
 }
 
 /** Slide-over drawer. */
-export function Drawer({ open, onClose, title, description, footer, side = "right", children, className, style }: DrawerProps) {
+export function Drawer({
+  open,
+  onClose,
+  title,
+  description,
+  footer,
+  side = "right",
+  children,
+  className,
+  style,
+}: DrawerProps) {
   const ref = useOverlayBehaviour(open, onClose);
   if (!open) return null;
 
   return (
-    <div className="eos-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className={cx("eos-overlay", "left" === side ? "eos-overlay--left" : "eos-overlay--right")}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div
         ref={ref}
         role="dialog"
@@ -94,7 +120,11 @@ export function SidePanel({
   style,
 }: StyleProps & { title: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
-    <aside className={cx("eos-side-panel", className)} style={style} aria-label={typeof title === "string" ? title : undefined}>
+    <aside
+      className={cx("eos-side-panel", className)}
+      style={style}
+      aria-label={typeof title === "string" ? title : undefined}
+    >
       <header className="eos-side-panel__header">
         <h2 className="eos-card__title">{title}</h2>
         {actions ? <div className="eos-inline">{actions}</div> : null}

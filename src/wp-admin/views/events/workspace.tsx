@@ -30,6 +30,7 @@ import {
   fromLocalInput,
   goTo,
   pageUrl,
+  queryParam,
   statusKind,
   statusLabel,
   toLocalInput,
@@ -252,10 +253,22 @@ function SettingsTab({ event }: { event: EventRecord }) {
   );
 }
 
+const WORKSPACE_TABS = [
+  "overview",
+  "ticketing",
+  "orders",
+  "guests",
+  "scanner",
+  "marketing",
+  "reports",
+  "settings",
+];
+
 export function EventWorkspaceView({ eventId }: { eventId: number }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("overview");
+  const initialTab = queryParam("tab");
+  const [tab, setTab] = useState(WORKSPACE_TABS.includes(initialTab) ? initialTab : "overview");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const detail = useQuery({

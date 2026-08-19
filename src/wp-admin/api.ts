@@ -2068,3 +2068,45 @@ export const crmApi = {
   backfillRuns: () => unwrap<{ runs: BackfillRun[] }>("crm/backfill/runs"),
   startBackfill: () => unwrap<BackfillRun>("crm/backfill/start", { method: "POST" }),
 };
+
+// ── Global search ──────────────────────────────────────────────────────────
+
+export interface SearchEntityInfo {
+  entity: string;
+  label: string;
+  module: string;
+  icon: string;
+  searchable: string[];
+  filterable: Record<string, unknown>;
+  sortable: string[];
+  default_sort: string;
+  default_order: "asc" | "desc";
+}
+
+export interface SearchResultItem {
+  entity: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  url: string;
+  meta: Record<string, unknown>;
+}
+
+export interface SearchGroup {
+  entity: string;
+  label: string;
+  total: number;
+  items: SearchResultItem[];
+}
+
+export interface SearchResponse {
+  term: string;
+  groups: SearchGroup[];
+}
+
+export const searchApi = {
+  entities: () => unwrap<SearchEntityInfo[]>("search/entities"),
+  search: (term: string, perPage = 8) =>
+    unwrap<SearchResponse>(`search${query({ q: term, per_page: perPage })}`),
+};

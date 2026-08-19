@@ -28,6 +28,7 @@ use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
 use EventOS\Rest\Person_Controller;
 use EventOS\Rest\Rest_Registry;
+use EventOS\Search_Registry;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -208,6 +209,61 @@ final class Crm_Module extends Abstract_Module {
 		add_action( 'eventos_ticket_order_fulfilled', array( $this, 'handle_ticket_order_fulfilled' ), 10, 5 );
 		add_action( 'eventos_register_exports', array( $this, 'register_exports' ) );
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
+		add_action( 'eventos_register_search_entities', array( $this, 'register_search_entities' ) );
+	}
+
+	/**
+	 * Register CRM People as a globally searchable entity.
+	 *
+	 * Reuses {@see Person_Service::search()} directly — the exact same
+	 * indexed name/email/phone query the People list screen already runs —
+	 * rather than a second person-search data layer.
+	 *
+	 * @return void
+	 */
+	public function register_search_entities(): void {
+		$person_service = $this->person_service();
+
+		Search_Registry::register(
+			array(
+				'entity'     => 'people',
+				'label'      => __( 'People', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Crm_Capabilities::MANAGE_CRM,
+				'icon'       => 'user',
+				'searchable' => array( 'display_name', 'primary_email', 'primary_phone' ),
+				'query'      => static function ( array $args ) use ( $person_service ): array {
+					$term = trim( (string) ( $args['term'] ?? '' ) );
+
+					if ( '' === $term ) {
+						return array( 'items' => array(), 'total' => 0 );
+					}
+
+					$result = $person_service->search(
+						array(
+							'q'        => $term,
+							'page'     => (int) ( $args['page'] ?? 1 ),
+							'per_page' => (int) ( $args['per_page'] ?? 20 ),
+						)
+					);
+
+					return array(
+						'items' => array_map(
+							static function ( array $person ): array {
+								return array(
+									'id'       => $person['person_id'],
+									'title'    => (string) $person['display_name'],
+									'subtitle' => (string) ( $person['primary_email'] ?: $person['primary_phone'] ),
+									'url'      => admin_url( 'admin.php?page=eventos-crm-people&person=' . $person['person_id'] ),
+								);
+							},
+							$result['items']
+						),
+						'total' => $result['total'],
+					);
+				},
+			)
+		);
 	}
 
 	/**

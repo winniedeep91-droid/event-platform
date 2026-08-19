@@ -26,6 +26,7 @@ use EventOS\Rest\Docs_Controller;
 use EventOS\Rest\Export_Controller;
 use EventOS\Rest\Import_Controller;
 use EventOS\Rest\Rest_Registry;
+use EventOS\Rest\Search_Controller;
 use EventOS\Search_Registry;
 use EventOS\Invitations;
 use EventOS\Rest\Dashboard_Controller;
@@ -91,8 +92,13 @@ final class Core_Module extends Abstract_Module {
 		// `eventos_register_jobs`, just not previously caught here because
 		// nothing had exercised these registrations at runtime yet. `init`
 		// fires once, later, after every module's init() has already run.
+		// Same hazard, same fix as Export_Registry above: Search_Registry::bootstrap()
+		// fires `eventos_register_search_entities` the moment it's called, and
+		// Events_Module/Crm_Module only attach their listeners once their own
+		// (later-running) init() executes — so this must defer to `init` too,
+		// not fire synchronously here.
 		add_action( 'init', array( Export_Registry::class, 'bootstrap' ) );
-		Search_Registry::bootstrap();
+		add_action( 'init', array( Search_Registry::class, 'bootstrap' ) );
 
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_providers' ) );
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_infrastructure_endpoints' ) );
@@ -220,6 +226,27 @@ final class Core_Module extends Abstract_Module {
 					'callback'   => array( Import_Controller::class, 'rollback' ),
 					'log_action' => 'import_rolled_back',
 					'summary'    => __( 'Undo a completed import run.', 'eventos' ),
+				),
+				array(
+					'route'      => '/search/entities',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Search_Controller::class, 'entities' ),
+					'summary'    => __( 'Entities the current user may search, and their searchable/filterable/sortable fields.', 'eventos' ),
+				),
+				array(
+					'route'      => '/search',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Search_Controller::class, 'search' ),
+					'summary'    => __( 'Search every entity the current user may access, grouped by entity.', 'eventos' ),
+				),
+				array(
+					'route'      => '/search/(?P<entity>[a-z0-9_-]+)',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Search_Controller::class, 'query' ),
+					'summary'    => __( 'Paginated search against a single registered entity.', 'eventos' ),
 				),
 			),
 			$this->slug()

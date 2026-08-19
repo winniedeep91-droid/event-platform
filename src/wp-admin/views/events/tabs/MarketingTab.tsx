@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -17,9 +17,11 @@ import {
   StatCard,
   Switch,
   Textarea,
+  Wizard,
   useToast,
   type DataTableColumn,
   type SelectOption,
+  type StepDefinition,
 } from "../../../ui";
 import {
   crmApi,
@@ -27,10 +29,14 @@ import {
   type AudiencePreviewPerson,
   type AudienceSegment,
   type AudienceType,
+  type CampaignMessage,
+  type CampaignRecipient,
   type CampaignStatus,
   type DiscountCampaign,
   type DiscountType,
+  type MessageStatus,
   type PromoLink,
+  type RecipientCounts,
 } from "../../../api";
 import { errorMessage, formatDateTime, fromLocalInput, toLocalInput } from "../shared";
 
@@ -74,6 +80,32 @@ const EVENT_SCOPED_TYPES: AudienceType[] = [
   "event_attendees",
   "event_non_attendees",
 ];
+
+// Kept in sync with EventOS\Marketing\Personalization_Renderer::known_tokens()
+// — every token the renderer actually understands, nothing invented.
+const PERSONALIZATION_TOKENS: { token: string; label: string }[] = [
+  { token: "first_name", label: "First name" },
+  { token: "last_name", label: "Last name" },
+  { token: "full_name", label: "Full name" },
+  { token: "email", label: "Email" },
+  { token: "event_name", label: "Event name" },
+  { token: "discount_code", label: "Discount code" },
+  { token: "total_spend", label: "Lifetime spend" },
+  { token: "last_purchase_date", label: "Last purchase date" },
+  { token: "ticket_type", label: "Ticket type" },
+  { token: "ticket_quantity", label: "Ticket quantity" },
+];
+
+function messageStatusTone(status: MessageStatus): "success" | "warning" | "neutral" | "danger" {
+  const map: Record<MessageStatus, "success" | "warning" | "neutral" | "danger"> = {
+    draft: "neutral",
+    ready: "warning",
+    sending: "warning",
+    sent: "success",
+    failed: "danger",
+  };
+  return map[status] ?? "neutral";
+}
 
 function statusTone(status: CampaignStatus): "success" | "warning" | "neutral" | "danger" {
   const map: Record<CampaignStatus, "success" | "warning" | "neutral" | "danger"> = {
@@ -584,10 +616,416 @@ function AudienceDrawer({
   );
 }
 
+interface MessageFormState {
+  subject: string;
+  preview_text: string;
+  sender_name: string;
+  sender_email: string;
+  reply_to: string;
+  body_html: string;
+  body_text: string;
+}
+
+const defaultMessageForm = (): MessageFormState => ({
+  subject: "",
+  preview_text: "",
+  sender_name: "",
+  sender_email: "",
+  reply_to: "",
+  body_html: "",
+  body_text: "",
+});
+
+function fromMessage(m: CampaignMessage): MessageFormState {
+  return {
+    subject: m.subject,
+    preview_text: m.preview_text,
+    sender_name: m.sender_name,
+    sender_email: m.sender_email,
+    reply_to: m.reply_to,
+    body_html: m.body_html,
+    body_text: m.body_text,
+  };
+}
+
+function recipientStatusTone(
+  status: CampaignRecipient["status"],
+): "success" | "warning" | "neutral" | "danger" {
+  if (status === "sent") return "success";
+  if (status === "failed" || status === "invalid") return "danger";
+  if (status === "pending" || status === "queued") return "neutral";
+  return "warning"; // sending, skipped, unsubscribed
+}
+
+/**
+ * Campaign / Message / Recipients / Review / Send workflow for one
+ * campaign's e-mail. A separate drawer from CampaignDrawer above (which
+ * only ever edits the discount/coupon basics) because a message cannot
+ * exist until a campaign already has an ID — see Campaign_Message_Repository.
+ */
+function CampaignMessageDrawer({
+  eventId,
+  campaign,
+  onClose,
+}: {
+  eventId: number;
+  campaign: DiscountCampaign;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [step, setStep] = useState(0);
+  const [testEmail, setTestEmail] = useState("");
+  const [form, setForm] = useState<MessageFormState>(defaultMessageForm());
+  const [hydrated, setHydrated] = useState(false);
+
+  const messageQuery = useQuery({
+    queryKey: ["eventos", "marketing", "message", campaign.id],
+    queryFn: () => eventsApi.campaignMessage(eventId, campaign.id),
+  });
+
+  useEffect(() => {
+    if (!hydrated && messageQuery.data !== undefined) {
+      const existing = messageQuery.data.message;
+      if (existing) setForm(fromMessage(existing));
+      setHydrated(true);
+    }
+  }, [hydrated, messageQuery.data]);
+
+  const set = <K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const insertToken = (token: string) => set("body_html", `${form.body_html}{{${token}}}`);
+
+  const messageStatus: MessageStatus = messageQuery.data?.message?.status ?? "draft";
+
+  const saveMessage = useMutation({
+    mutationFn: () =>
+      eventsApi.saveCampaignMessage(
+        eventId,
+        campaign.id,
+        form as unknown as Record<string, unknown>,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "message", campaign.id] });
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Save failed"),
+  });
+
+  const recipientsQuery = useQuery({
+    queryKey: ["eventos", "marketing", "recipients", campaign.id],
+    queryFn: () => eventsApi.campaignRecipients(eventId, campaign.id, { perPage: 50 }),
+    enabled: step >= 1,
+  });
+
+  const prepare = useMutation({
+    mutationFn: () => eventsApi.prepareCampaignRecipients(eventId, campaign.id),
+    onSuccess: (counts) => {
+      toast.success(
+        `${counts.total.toLocaleString()} people resolved into the recipient snapshot.`,
+        "Prepared",
+      );
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "recipients", campaign.id] });
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "message", campaign.id] });
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Could not prepare recipients"),
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ["eventos", "marketing", "message-preview", campaign.id],
+    queryFn: () => eventsApi.campaignMessagePreview(eventId, campaign.id),
+    enabled: step === 2,
+  });
+
+  const sendTest = useMutation({
+    mutationFn: () => eventsApi.testSendCampaign(eventId, campaign.id, testEmail),
+    onSuccess: () => toast.success(`Test e-mail sent to ${testEmail}.`, "Sent"),
+    onError: (err: unknown) => toast.error(errorMessage(err), "Test send failed"),
+  });
+
+  const sendNow = useMutation({
+    mutationFn: () => eventsApi.sendCampaign(eventId, campaign.id),
+    onSuccess: () => {
+      toast.success("Sending started — processing in the background.", "Sending");
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "recipients", campaign.id] });
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "message", campaign.id] });
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Send failed"),
+  });
+
+  const counts: RecipientCounts | undefined = recipientsQuery.data?.counts;
+  const recipientRows: CampaignRecipient[] = recipientsQuery.data?.recipients ?? [];
+  const eligibleTotal = (counts?.pending ?? 0) + (counts?.sent ?? 0) + (counts?.failed ?? 0);
+
+  const canAdvanceFromMessage =
+    form.subject.trim() !== "" && form.sender_email.trim() !== "" && form.body_html.trim() !== "";
+
+  const handleStepChange = (index: number) => {
+    if (index > step && step === 0) {
+      if (!canAdvanceFromMessage) {
+        toast.error("Add a subject, sender e-mail and message content first.", "Incomplete");
+        return;
+      }
+      saveMessage.mutate(undefined, { onSuccess: () => setStep(index) });
+      return;
+    }
+    setStep(index);
+  };
+
+  const recipientColumns: DataTableColumn<CampaignRecipient>[] = [
+    { key: "email", header: "Recipient", cell: (row) => row.email || `Person #${row.person_id}` },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <Badge tone={recipientStatusTone(row.status)}>{row.status}</Badge>,
+    },
+    {
+      key: "skip_reason",
+      header: "Detail",
+      cell: (row) => row.skip_reason || row.failure_reason || "—",
+    },
+  ];
+
+  const steps: StepDefinition[] = [
+    {
+      id: "message",
+      title: "Message",
+      content: (
+        <Stack>
+          <Grid minColumnWidth={200}>
+            <Input
+              label="Sender name"
+              value={form.sender_name}
+              onChange={(e) => set("sender_name", e.target.value)}
+              placeholder="Garden Groove Events"
+            />
+            <Input
+              label="Sender e-mail"
+              type="email"
+              required
+              value={form.sender_email}
+              onChange={(e) => set("sender_email", e.target.value)}
+              placeholder="hello@yourevent.com"
+            />
+          </Grid>
+          <Input
+            label="Reply-to"
+            type="email"
+            value={form.reply_to}
+            onChange={(e) => set("reply_to", e.target.value)}
+            placeholder="Optional"
+          />
+          <Input
+            label="Subject"
+            required
+            value={form.subject}
+            onChange={(e) => set("subject", e.target.value)}
+            placeholder="e.g. Your VIP early-bird discount is here"
+          />
+          <Input
+            label="Preview text"
+            value={form.preview_text}
+            onChange={(e) => set("preview_text", e.target.value)}
+            placeholder="Shown next to the subject in most inboxes"
+          />
+          <div>
+            <strong>Insert a field</strong>
+            <div className="eos-inline" style={{ flexWrap: "wrap", marginTop: 4 }}>
+              {PERSONALIZATION_TOKENS.map((t) => (
+                <Button key={t.token} size="sm" onClick={() => insertToken(t.token)}>
+                  {t.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <Textarea
+            label="Message (HTML)"
+            required
+            rows={10}
+            value={form.body_html}
+            onChange={(e) => set("body_html", e.target.value)}
+            placeholder="<p>Hi {{first_name}}, ...</p>"
+            hint="Personalization tokens like {{first_name}} are filled in per recipient, with safe fallbacks."
+          />
+          <Textarea
+            label="Plain-text fallback"
+            rows={6}
+            value={form.body_text}
+            onChange={(e) => set("body_text", e.target.value)}
+            placeholder="Optional — auto-generated from the HTML if left blank"
+          />
+        </Stack>
+      ),
+    },
+    {
+      id: "recipients",
+      title: "Recipients",
+      content: (
+        <Stack>
+          <Alert tone="info" title="Frozen at prepare time">
+            Preparing captures who currently matches this campaign&rsquo;s audience into a permanent
+            list. Changing the audience afterward will not add or remove anyone here — prepare again
+            to pick up new matches without disturbing anyone already snapshotted.
+          </Alert>
+          <Button variant="primary" loading={prepare.isPending} onClick={() => prepare.mutate()}>
+            {counts && counts.total > 0 ? "Check for new matches" : "Prepare recipients"}
+          </Button>
+          {recipientsQuery.isLoading ? (
+            <LoadingState label="Loading recipients…" />
+          ) : counts ? (
+            <Grid minColumnWidth={140}>
+              <StatCard
+                label="Eligible"
+                value={(counts.pending + counts.sent + counts.failed).toLocaleString()}
+              />
+              <StatCard label="Skipped (no consent)" value={counts.skipped.toLocaleString()} />
+              <StatCard label="Unsubscribed" value={counts.unsubscribed.toLocaleString()} />
+              <StatCard label="Invalid e-mail" value={counts.invalid.toLocaleString()} />
+            </Grid>
+          ) : (
+            <p className="eos-page__description">Not prepared yet.</p>
+          )}
+        </Stack>
+      ),
+    },
+    {
+      id: "review",
+      title: "Review",
+      content: (
+        <Stack>
+          {previewQuery.isLoading ? (
+            <LoadingState label="Rendering preview…" />
+          ) : previewQuery.data ? (
+            <div
+              style={{ border: "1px solid var(--eos-border)", borderRadius: 8, overflow: "hidden" }}
+            >
+              <div style={{ padding: 12, background: "var(--eos-surface-muted)" }}>
+                <div>
+                  <strong>Subject:</strong> {previewQuery.data.subject}
+                </div>
+                <div className="eos-page__description">
+                  From: {form.sender_name || "—"} &lt;{form.sender_email}&gt;
+                </div>
+              </div>
+              <div
+                style={{ padding: 16 }}
+                dangerouslySetInnerHTML={{ __html: previewQuery.data.html }}
+              />
+            </div>
+          ) : (
+            <Alert tone="danger" title="Nothing to preview">
+              Save the message first.
+            </Alert>
+          )}
+          <Grid minColumnWidth={220}>
+            <Input
+              label="Send a test e-mail to"
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <Button
+                loading={sendTest.isPending}
+                disabled={!testEmail}
+                onClick={() => sendTest.mutate()}
+              >
+                Send test
+              </Button>
+            </div>
+          </Grid>
+        </Stack>
+      ),
+    },
+    {
+      id: "send",
+      title: "Send",
+      content: (
+        <Stack>
+          <div className="eos-inline">
+            <span>Message status:</span>
+            <Badge tone={messageStatusTone(messageStatus)}>{messageStatus}</Badge>
+            <Button
+              size="sm"
+              loading={recipientsQuery.isFetching || messageQuery.isFetching}
+              onClick={() => {
+                void recipientsQuery.refetch();
+                void messageQuery.refetch();
+              }}
+            >
+              Refresh status
+            </Button>
+          </div>
+          <p className="eos-page__description">
+            Sending runs in the background — status here only updates when you refresh.
+          </p>
+          {campaign.status !== "active" ? (
+            <Alert tone="danger" title="Campaign is not active">
+              The linked discount code only works at checkout while this campaign is active.
+              Activate it from the campaign&rsquo;s Edit drawer before sending.
+            </Alert>
+          ) : counts && counts.pending > 0 ? (
+            <Alert tone="warning" title="Confirm before sending">
+              You are about to send this campaign to {counts.pending.toLocaleString()} pending
+              recipient{counts.pending === 1 ? "" : "s"}
+              {counts.sent > 0 ? ` (${counts.sent.toLocaleString()} already sent previously)` : ""}.
+            </Alert>
+          ) : eligibleTotal > 0 ? (
+            <Alert tone="success" title="Fully sent">
+              Every eligible recipient has already been attempted.
+            </Alert>
+          ) : (
+            <Alert tone="danger" title="No recipients prepared">
+              Go back to the Recipients step and prepare recipients before sending.
+            </Alert>
+          )}
+          {counts && counts.total > 0 ? (
+            <DataTable
+              caption="Recipient delivery status"
+              columns={recipientColumns}
+              rows={recipientRows}
+              getRowId={(row) => String(row.id)}
+              emptyTitle="No recipients yet"
+              emptyDescription="Prepare recipients first."
+            />
+          ) : null}
+        </Stack>
+      ),
+    },
+  ];
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Message: ${campaign.name}`}
+      description="Compose, prepare recipients, preview and send this campaign's e-mail."
+    >
+      {!hydrated && messageQuery.isLoading ? (
+        <LoadingState label="Loading message…" />
+      ) : (
+        <Wizard
+          steps={steps}
+          current={step}
+          onStepChange={handleStepChange}
+          onFinish={() => sendNow.mutate()}
+          finishLabel="Send now"
+          busy={sendNow.isPending || saveMessage.isPending}
+          canContinue={
+            step !== 3 || (campaign.status === "active" && Boolean(counts && counts.pending > 0))
+          }
+        />
+      )}
+    </Drawer>
+  );
+}
+
 export function MarketingTab({ eventId }: Props) {
   const toast = useToast();
   const qc = useQueryClient();
   const [campaignDrawer, setCampaignDrawer] = useState<DiscountCampaign | null | "new">(null);
+  const [messageDrawer, setMessageDrawer] = useState<DiscountCampaign | null>(null);
   const [linkDrawer, setLinkDrawer] = useState(false);
   const [audienceDrawer, setAudienceDrawer] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -743,6 +1181,9 @@ export function MarketingTab({ eventId }: Props) {
         <div className="eos-inline">
           <Button size="sm" onClick={() => setCampaignDrawer(row)}>
             Edit
+          </Button>
+          <Button size="sm" onClick={() => setMessageDrawer(row)}>
+            Message
           </Button>
           <Button
             size="sm"
@@ -946,6 +1387,13 @@ export function MarketingTab({ eventId }: Props) {
           editing={campaignDrawer === "new" ? null : campaignDrawer}
           audienceOptions={audienceOptions}
           onClose={() => setCampaignDrawer(null)}
+        />
+      )}
+      {messageDrawer && (
+        <CampaignMessageDrawer
+          eventId={eventId}
+          campaign={messageDrawer}
+          onClose={() => setMessageDrawer(null)}
         />
       )}
       {linkDrawer && <PromoLinkDrawer eventId={eventId} onClose={() => setLinkDrawer(false)} />}

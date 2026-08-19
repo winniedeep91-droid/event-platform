@@ -27,6 +27,7 @@ use EventOS\Events\Ticket_Order_Resolver;
 use EventOS\Events\Ticket_Repository;
 use EventOS\Events\Ticket_Type_Repository;
 use EventOS\Events\Ticketing_Service;
+use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
 use EventOS\Crm\Person_Repository;
 use EventOS\Crm\Segment_Repository;
@@ -34,8 +35,13 @@ use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
 use EventOS\Marketing\Audience_Repository;
 use EventOS\Marketing\Audience_Resolver;
+use EventOS\Marketing\Campaign_Message_Repository;
+use EventOS\Marketing\Campaign_Recipient_Repository;
+use EventOS\Marketing\Campaign_Send_Service;
 use EventOS\Marketing\Marketing_Capabilities;
+use EventOS\Marketing\Marketing_Mail_Service;
 use EventOS\Marketing\Marketing_Schema;
+use EventOS\Marketing\Personalization_Renderer;
 use EventOS\Rest\Marketing_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Ticketing_Controller;
@@ -71,6 +77,13 @@ final class Events_Module extends Abstract_Module {
 	 * @var Marketing_Service|null
 	 */
 	private ?Marketing_Service $marketing_service = null;
+
+	/**
+	 * Campaign message/send orchestration layer.
+	 *
+	 * @var Campaign_Send_Service|null
+	 */
+	private ?Campaign_Send_Service $campaign_send_service = null;
 
 	/**
 	 * Module slug.
@@ -161,6 +174,30 @@ final class Events_Module extends Abstract_Module {
 		}
 
 		return $this->marketing_service;
+	}
+
+	/**
+	 * Campaign message/send service accessor.
+	 *
+	 * @return Campaign_Send_Service
+	 */
+	public function campaign_send_service(): Campaign_Send_Service {
+		if ( null === $this->campaign_send_service ) {
+			$this->campaign_send_service = new Campaign_Send_Service(
+				new Campaign_Repository( $this->ticketing_service()->ticket_types() ),
+				new Campaign_Message_Repository(),
+				new Campaign_Recipient_Repository(),
+				new Audience_Repository(),
+				new Audience_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Segment_Repository() ),
+				new Person_Repository(),
+				new Person_Identity_Repository(),
+				new Person_Consent_Repository(),
+				new Marketing_Mail_Service(),
+				new Personalization_Renderer()
+			);
+		}
+
+		return $this->campaign_send_service;
 	}
 
 	/**
@@ -294,6 +331,13 @@ final class Events_Module extends Abstract_Module {
 		Import_Registry::bootstrap();
 
 		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository() ) )->bootstrap();
+
+		// Registered directly here, not via the `eventos_register_jobs`
+		// hook: that hook fires from inside Core_Module::init(), which has
+		// already run by the time Events_Module (dependent on 'core')
+		// reaches its own init() — see Person_Backfill_Service's docblock
+		// for the identical gotcha with Crm_Module.
+		$this->campaign_send_service()->register_job_handler();
 	}
 
 	/**
@@ -328,7 +372,7 @@ final class Events_Module extends Abstract_Module {
 
 		Rest_Registry::register_many( $ticketing->endpoints(), $this->slug() );
 
-		$marketing = new Marketing_Controller( $this->marketing_service() );
+		$marketing = new Marketing_Controller( $this->marketing_service(), $this->campaign_send_service() );
 
 		Rest_Registry::register_many( $marketing->endpoints(), $this->slug() );
 	}

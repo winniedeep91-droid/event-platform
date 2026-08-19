@@ -47,6 +47,53 @@ final class Person_Consent_Repository {
 	}
 
 	/**
+	 * Whether a Person currently has an active (granted, not revoked) grant
+	 * for a channel — the read-only check consumers outside this class need
+	 * (e.g. Marketing deciding whether a Person may receive a campaign
+	 * email); {@see active_grant()} already computed this internally for
+	 * grant()/revoke(), it just was not exposed until now.
+	 *
+	 * @param int    $person_id Person ID.
+	 * @param string $channel   Channel, e.g. 'marketing_email'.
+	 * @return bool
+	 */
+	public function has_active( int $person_id, string $channel ): bool {
+		return null !== $this->active_grant( $person_id, sanitize_key( $channel ) );
+	}
+
+	/**
+	 * Whether a Person was ever granted a channel at all (granted then
+	 * possibly revoked) — distinguishes "never opted in" from "opted in,
+	 * then unsubscribed" for callers that need to report the difference.
+	 *
+	 * @param int    $person_id Person ID.
+	 * @param string $channel   Channel.
+	 * @return bool
+	 */
+	public function was_ever_granted( int $person_id, string $channel ): bool {
+		global $wpdb;
+
+		$channel = sanitize_key( $channel );
+
+		if ( '' === $channel || $person_id <= 0 ) {
+			return false;
+		}
+
+		$table = Person_Schema::person_consents();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table} WHERE person_id = %d AND channel = %s",
+				$person_id,
+				$channel
+			)
+		);
+
+		return $count > 0;
+	}
+
+	/**
 	 * Grant consent for a channel.
 	 *
 	 * Idempotent against an already-active grant: if this channel is

@@ -11,6 +11,7 @@ namespace EventOS\Rest;
 
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Marketing_Service;
+use EventOS\Marketing\Campaign_Send_Service;
 use EventOS\Marketing\Marketing_Capabilities;
 use WP_REST_Request;
 
@@ -31,12 +32,21 @@ final class Marketing_Controller {
 	private Marketing_Service $service;
 
 	/**
+	 * Message/send orchestration layer.
+	 *
+	 * @var Campaign_Send_Service
+	 */
+	private Campaign_Send_Service $send_service;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param Marketing_Service $service Service layer.
+	 * @param Marketing_Service     $service      Service layer.
+	 * @param Campaign_Send_Service $send_service Message/send orchestration layer.
 	 */
-	public function __construct( Marketing_Service $service ) {
-		$this->service = $service;
+	public function __construct( Marketing_Service $service, Campaign_Send_Service $send_service ) {
+		$this->service      = $service;
+		$this->send_service = $send_service;
 	}
 
 	/**
@@ -162,6 +172,65 @@ final class Marketing_Controller {
 				'capability' => $view,
 				'callback'   => array( $this, 'audience_preview' ),
 				'summary'    => __( 'Sample people a Marketing audience currently resolves to.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/message',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'get_message' ),
+				'summary'    => __( 'Read a campaign\'s message.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/message',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'save_message' ),
+				'log_action' => 'campaign_message_saved',
+				'summary'    => __( 'Create or update a campaign\'s message.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/prepare',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'prepare_campaign' ),
+				'log_action' => 'campaign_recipients_prepared',
+				'summary'    => __( 'Resolve a campaign\'s audience into a permanent recipient snapshot.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/send',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'send_campaign' ),
+				'log_action' => 'campaign_send_started',
+				'summary'    => __( 'Start (or resume) sending a campaign to its prepared recipients.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/test-send',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'test_send_campaign' ),
+				'summary'    => __( 'Send an immediate test e-mail without affecting the recipient snapshot.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/preview',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'preview_campaign_message' ),
+				'summary'    => __( 'Rendered preview of a campaign\'s message.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/marketing/campaigns/(?P<campaign_id>\d+)/recipients',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'campaign_recipients' ),
+				'summary'    => __( 'A campaign\'s recipient snapshot and delivery status.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/unsubscribe',
+				'methods'    => 'GET',
+				'capability' => '',
+				'callback'   => array( $this, 'unsubscribe' ),
+				'summary'    => __( 'Public, token-verified marketing e-mail unsubscribe link.', 'eventos' ),
 			),
 		);
 	}
@@ -336,6 +405,160 @@ final class Marketing_Controller {
 		$limit = (int) $request->get_param( 'limit' ) ?: 5;
 
 		return $this->service->audience_preview( (int) $request->get_param( 'audience_id' ), $limit );
+	}
+
+	/**
+	 * Read a campaign's message.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function get_message( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		$message = $this->send_service->get_message( (int) $campaign['id'] );
+
+		return array( 'message' => $message );
+	}
+
+	/**
+	 * Create or update a campaign's message.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function save_message( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		return $this->send_service->save_message( (int) $campaign['id'], $this->payload( $request ) );
+	}
+
+	/**
+	 * Resolve a campaign's audience into a permanent recipient snapshot.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function prepare_campaign( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		return $this->send_service->prepare( (int) $campaign['id'] );
+	}
+
+	/**
+	 * Start (or resume) sending a campaign.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function send_campaign( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		return $this->send_service->send_now( (int) $campaign['id'] );
+	}
+
+	/**
+	 * Send an immediate test e-mail.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function test_send_campaign( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		$email = (string) ( $this->payload( $request )['email'] ?? '' );
+
+		$result = $this->send_service->send_test( (int) $campaign['id'], $email );
+
+		return is_wp_error( $result ) ? $result : array( 'sent' => true );
+	}
+
+	/**
+	 * Rendered preview of a campaign's message.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function preview_campaign_message( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		return $this->send_service->preview( (int) $campaign['id'] );
+	}
+
+	/**
+	 * A campaign's recipient snapshot and delivery status.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function campaign_recipients( WP_REST_Request $request ) {
+		$campaign = $this->owned_campaign( $request );
+
+		if ( is_wp_error( $campaign ) ) {
+			return $campaign;
+		}
+
+		$page     = max( 1, (int) $request->get_param( 'page' ) ?: 1 );
+		$per_page = (int) $request->get_param( 'per_page' ) ?: 50;
+
+		$result = $this->send_service->recipients( (int) $campaign['id'], $page, $per_page );
+
+		return array(
+			'recipients' => $result['items'],
+			'total'      => $result['total'],
+			'counts'     => $this->send_service->counts( (int) $campaign['id'] ),
+		);
+	}
+
+	/**
+	 * Public, token-verified unsubscribe endpoint. Never exposes whether a
+	 * token was invalid vs. already used vs. never existed — a generic
+	 * "invalid or expired" WP_Error covers every case, so the endpoint
+	 * cannot be used to probe for valid tokens.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function unsubscribe( WP_REST_Request $request ) {
+		$token = (string) $request->get_param( 'token' );
+
+		return $this->send_service->unsubscribe( $token );
+	}
+
+	/**
+	 * The campaign identified by the request, only if it belongs to the
+	 * event in the route — the shared ownership guard every message/send
+	 * callback above uses.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array<string, mixed>|\WP_Error
+	 */
+	private function owned_campaign( WP_REST_Request $request ) {
+		return $this->service->find_campaign( (int) $request->get_param( 'id' ), (int) $request->get_param( 'campaign_id' ) );
 	}
 
 	/**

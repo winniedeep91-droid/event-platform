@@ -750,6 +750,59 @@ export interface AudiencePreviewPerson {
   primary_email: string;
 }
 
+/** Send-lifecycle status of a campaign's message — independent of the campaign's own discount status. */
+export type MessageStatus = "draft" | "ready" | "sending" | "sent" | "failed";
+
+export interface CampaignMessage {
+  id: number;
+  campaign_id: number;
+  subject: string;
+  preview_text: string;
+  sender_name: string;
+  sender_email: string;
+  reply_to: string;
+  body_html: string;
+  body_text: string;
+  status: MessageStatus;
+  send_started_at: string | null;
+  send_completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RecipientStatus =
+  "pending" | "queued" | "sending" | "sent" | "failed" | "skipped" | "unsubscribed" | "invalid";
+
+export interface CampaignRecipient {
+  id: number;
+  campaign_id: number;
+  person_id: number;
+  email: string;
+  status: RecipientStatus;
+  skip_reason: string;
+  failure_reason: string | null;
+  attempts: number;
+  last_attempt_at: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export interface RecipientCounts {
+  total: number;
+  pending: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  unsubscribed: number;
+  invalid: number;
+}
+
+export interface CampaignPreview {
+  subject: string;
+  html: string;
+  text: string;
+}
+
 // ── Report types ──────────────────────────────────────────────────────────
 
 export interface EventReportPayload {
@@ -1022,6 +1075,42 @@ export const eventsApi = {
   audiencePreview: (audienceId: number, limit = 5) =>
     unwrap<{ count: number; preview: AudiencePreviewPerson[] }>(
       `marketing/audiences/${audienceId}/preview${query({ limit })}`,
+    ),
+  campaignMessage: (eventId: number, campaignId: number) =>
+    unwrap<{ message: CampaignMessage | null }>(
+      `events/${eventId}/marketing/campaigns/${campaignId}/message`,
+    ),
+  saveCampaignMessage: (eventId: number, campaignId: number, payload: EventPayload) =>
+    unwrap<CampaignMessage>(`events/${eventId}/marketing/campaigns/${campaignId}/message`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  prepareCampaignRecipients: (eventId: number, campaignId: number) =>
+    unwrap<RecipientCounts>(`events/${eventId}/marketing/campaigns/${campaignId}/prepare`, {
+      method: "POST",
+    }),
+  sendCampaign: (eventId: number, campaignId: number) =>
+    unwrap<{ status: MessageStatus; counts: RecipientCounts }>(
+      `events/${eventId}/marketing/campaigns/${campaignId}/send`,
+      { method: "POST" },
+    ),
+  testSendCampaign: (eventId: number, campaignId: number, email: string) =>
+    unwrap<{ sent: boolean }>(`events/${eventId}/marketing/campaigns/${campaignId}/test-send`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  campaignMessagePreview: (eventId: number, campaignId: number) =>
+    unwrap<CampaignPreview>(`events/${eventId}/marketing/campaigns/${campaignId}/preview`),
+  campaignRecipients: (
+    eventId: number,
+    campaignId: number,
+    params: { page?: number; perPage?: number } = {},
+  ) =>
+    unwrap<{ recipients: CampaignRecipient[]; total: number; counts: RecipientCounts }>(
+      `events/${eventId}/marketing/campaigns/${campaignId}/recipients${query({
+        page: params.page,
+        per_page: params.perPage,
+      })}`,
     ),
 
   // ── Reports ───────────────────────────────────────────────────────────

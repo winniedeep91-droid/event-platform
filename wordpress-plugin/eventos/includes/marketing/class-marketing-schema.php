@@ -27,7 +27,7 @@ final class Marketing_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.0.0';
+	public const VERSION = '1.1.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -53,6 +53,30 @@ final class Marketing_Schema {
 	 */
 	public static function audiences(): string {
 		return self::table( 'marketing_audiences' );
+	}
+
+	/**
+	 * Campaign messages — the emailable content attached to a campaign.
+	 * One row per campaign (a campaign has at most one message this phase;
+	 * see {@see \EventOS\Marketing\Campaign_Message_Repository}).
+	 *
+	 * @return string
+	 */
+	public static function campaign_messages(): string {
+		return self::table( 'campaign_messages' );
+	}
+
+	/**
+	 * Campaign recipient snapshot rows — one per Person a campaign resolved
+	 * to at prepare-time, with delivery status. This table *is* the
+	 * "recipient snapshot"; once written, the live audience is never
+	 * consulted again for that campaign's send (see
+	 * {@see \EventOS\Marketing\Campaign_Send_Service}).
+	 *
+	 * @return string
+	 */
+	public static function campaign_recipients(): string {
+		return self::table( 'campaign_recipients' );
 	}
 
 	/**
@@ -91,6 +115,65 @@ final class Marketing_Schema {
 			KEY event_id (event_id),
 			KEY type (type),
 			KEY status (status)
+		) {$collate};";
+
+		$messages = self::campaign_messages();
+
+		// One message per campaign for this phase — a future sprint that
+		// wants message revisions/multiple channels can relax the UNIQUE key
+		// without touching anything else here.
+		$schema[] = "CREATE TABLE {$messages} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			campaign_id BIGINT UNSIGNED NOT NULL,
+			subject VARCHAR(191) NOT NULL DEFAULT '',
+			preview_text VARCHAR(191) NOT NULL DEFAULT '',
+			sender_name VARCHAR(191) NOT NULL DEFAULT '',
+			sender_email VARCHAR(191) NOT NULL DEFAULT '',
+			reply_to VARCHAR(191) NOT NULL DEFAULT '',
+			body_html LONGTEXT NULL,
+			body_text LONGTEXT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'draft',
+			send_started_at DATETIME NULL,
+			send_completed_at DATETIME NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY campaign_id (campaign_id),
+			KEY status (status)
+		) {$collate};";
+
+		$recipients = self::campaign_recipients();
+
+		// The recipient snapshot. `status` deliberately covers the full
+		// vocabulary the product spec asks for (pending/queued/sending/sent/
+		// failed/skipped/unsubscribed/invalid) even though the v1 send loop
+		// only ever writes pending/sent/failed/skipped/unsubscribed/invalid —
+		// queued/sending are reserved for a future finer-grained progress
+		// view rather than actively used yet (see Campaign_Send_Service).
+		// UNIQUE(campaign_id, person_id) is the dedupe-by-construction
+		// guarantee: a person can never appear twice in one campaign's
+		// recipient list even if resolve() ever returned them twice.
+		$schema[] = "CREATE TABLE {$recipients} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			campaign_id BIGINT UNSIGNED NOT NULL,
+			person_id BIGINT UNSIGNED NOT NULL,
+			email VARCHAR(191) NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			skip_reason VARCHAR(50) NOT NULL DEFAULT '',
+			failure_reason TEXT NULL,
+			attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+			last_attempt_at DATETIME NULL,
+			sent_at DATETIME NULL,
+			message_ref VARCHAR(64) NOT NULL DEFAULT '',
+			unsubscribe_token_hash CHAR(64) NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY campaign_person (campaign_id, person_id),
+			KEY campaign_id (campaign_id),
+			KEY person_id (person_id),
+			KEY status (status),
+			KEY unsubscribe_token_hash (unsubscribe_token_hash)
 		) {$collate};";
 
 		foreach ( $schema as $table_sql ) {

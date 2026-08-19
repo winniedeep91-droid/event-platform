@@ -131,6 +131,26 @@ final class Marketing_Service {
 	}
 
 	/**
+	 * A campaign, only if it belongs to the given event — the same
+	 * ownership guard update_campaign()/delete_campaign() already apply,
+	 * exposed for the new message/send routes so they can reuse it instead
+	 * of re-deriving it.
+	 *
+	 * @param int $event_id Event ID.
+	 * @param int $id       Campaign ID.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function find_campaign( int $event_id, int $id ) {
+		$campaign = $this->campaigns->find( $id );
+
+		if ( null === $campaign || (int) $campaign['event_id'] !== $event_id ) {
+			return $this->not_found();
+		}
+
+		return $campaign;
+	}
+
+	/**
 	 * Promo links for an event.
 	 *
 	 * @param int $event_id Event ID.

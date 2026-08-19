@@ -50,7 +50,8 @@ final class Guest_Repository {
 	public function create( array $data ): array {
 		global $wpdb;
 
-		$now = current_time( 'mysql', true );
+		$now    = current_time( 'mysql', true );
+		$status = (string) ( $data['status'] ?? 'confirmed' );
 
 		$row = array(
 			'event_id'       => (int) $data['event_id'],
@@ -59,8 +60,8 @@ final class Guest_Repository {
 			'name'           => (string) ( $data['name'] ?? '' ),
 			'email'          => (string) ( $data['email'] ?? '' ),
 			'phone'          => (string) ( $data['phone'] ?? '' ),
-			'status'         => in_array( (string) ( $data['status'] ?? 'confirmed' ), array( 'confirmed', 'waitlisted', 'cancelled', 'no_show' ), true )
-				? (string) $data['status']
+			'status'         => in_array( $status, array( 'confirmed', 'waitlisted', 'cancelled', 'no_show' ), true )
+				? $status
 				: 'confirmed',
 			'tags'           => wp_json_encode( array() ),
 			'notes'          => wp_json_encode( array() ),

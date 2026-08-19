@@ -11,6 +11,7 @@ namespace EventOS\Rest;
 
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Marketing_Service;
+use EventOS\Marketing\Marketing_Capabilities;
 use WP_REST_Request;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -44,8 +45,9 @@ final class Marketing_Controller {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public function endpoints(): array {
-		$view   = Event_Capabilities::VIEW_EVENTS;
-		$manage = Event_Capabilities::MANAGE_EVENTS;
+		$view            = Event_Capabilities::VIEW_EVENTS;
+		$manage          = Event_Capabilities::MANAGE_EVENTS;
+		$manage_audience = Marketing_Capabilities::MANAGE_MARKETING;
 
 		return array(
 			array(
@@ -108,6 +110,58 @@ final class Marketing_Controller {
 				'capability' => $view,
 				'callback'   => array( $this, 'audiences' ),
 				'summary'    => __( 'Audience segments for an event.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'list_audiences' ),
+				'summary'    => __( 'List Marketing audiences (optionally filtered by event).', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'create_audience' ),
+				'log_action' => 'audience_created',
+				'summary'    => __( 'Create a Marketing audience.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences/(?P<audience_id>\d+)',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'audience' ),
+				'summary'    => __( 'Read a single Marketing audience.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences/(?P<audience_id>\d+)',
+				'methods'    => 'POST',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'update_audience' ),
+				'log_action' => 'audience_updated',
+				'summary'    => __( 'Update a Marketing audience.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences/(?P<audience_id>\d+)',
+				'methods'    => 'DELETE',
+				'capability' => $manage_audience,
+				'callback'   => array( $this, 'archive_audience' ),
+				'log_action' => 'audience_archived',
+				'summary'    => __( 'Archive a Marketing audience.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences/(?P<audience_id>\d+)/count',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'audience_count' ),
+				'summary'    => __( 'Live resolved size of a Marketing audience.', 'eventos' ),
+			),
+			array(
+				'route'      => '/marketing/audiences/(?P<audience_id>\d+)/preview',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'audience_preview' ),
+				'summary'    => __( 'Sample people a Marketing audience currently resolves to.', 'eventos' ),
 			),
 		);
 	}
@@ -198,6 +252,90 @@ final class Marketing_Controller {
 	 */
 	public function audiences( WP_REST_Request $request ): array {
 		return array( 'audiences' => $this->service->audiences( (int) $request->get_param( 'id' ) ) );
+	}
+
+	/**
+	 * List Marketing audiences, optionally filtered to one event (which also
+	 * includes global audiences) or including archived ones.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array<string, mixed>
+	 */
+	public function list_audiences( WP_REST_Request $request ): array {
+		$event_id = $request->get_param( 'event_id' );
+
+		return array(
+			'audiences' => $this->service->list_audiences(
+				array(
+					'event_id'         => null !== $event_id && '' !== $event_id ? (int) $event_id : null,
+					'include_archived' => (bool) $request->get_param( 'include_archived' ),
+				)
+			),
+		);
+	}
+
+	/**
+	 * Create a Marketing audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function create_audience( WP_REST_Request $request ) {
+		return $this->service->create_audience( $this->payload( $request ) );
+	}
+
+	/**
+	 * Read a single Marketing audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function audience( WP_REST_Request $request ) {
+		return $this->service->find_audience( (int) $request->get_param( 'audience_id' ) );
+	}
+
+	/**
+	 * Update a Marketing audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function update_audience( WP_REST_Request $request ) {
+		return $this->service->update_audience( (int) $request->get_param( 'audience_id' ), $this->payload( $request ) );
+	}
+
+	/**
+	 * Archive a Marketing audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function archive_audience( WP_REST_Request $request ) {
+		$result = $this->service->archive_audience( (int) $request->get_param( 'audience_id' ) );
+
+		return is_wp_error( $result ) ? $result : array( 'archived' => true );
+	}
+
+	/**
+	 * Live resolved size of a Marketing audience.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function audience_count( WP_REST_Request $request ) {
+		return $this->service->audience_count( (int) $request->get_param( 'audience_id' ) );
+	}
+
+	/**
+	 * Sample people a Marketing audience currently resolves to.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function audience_preview( WP_REST_Request $request ) {
+		$limit = (int) $request->get_param( 'limit' ) ?: 5;
+
+		return $this->service->audience_preview( (int) $request->get_param( 'audience_id' ), $limit );
 	}
 
 	/**

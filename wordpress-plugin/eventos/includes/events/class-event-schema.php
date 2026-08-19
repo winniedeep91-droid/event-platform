@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.2.0';
+	public const VERSION = '1.3.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -464,6 +464,7 @@ final class Event_Schema {
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			event_id BIGINT UNSIGNED NOT NULL,
 			wc_coupon_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			audience_id BIGINT UNSIGNED NULL,
 			name VARCHAR(191) NOT NULL,
 			code VARCHAR(60) NOT NULL,
 			type VARCHAR(20) NOT NULL DEFAULT 'percent',
@@ -480,6 +481,7 @@ final class Event_Schema {
 			UNIQUE KEY code (code),
 			KEY event_id (event_id),
 			KEY wc_coupon_id (wc_coupon_id),
+			KEY audience_id (audience_id),
 			KEY status (status)
 		) {$collate};";
 

@@ -686,6 +686,7 @@ export interface DiscountCampaign {
   id: number;
   event_id: number;
   wc_coupon_id: number;
+  audience_id: number | null;
   name: string;
   code: string;
   type: DiscountType;
@@ -712,12 +713,41 @@ export interface PromoLink {
   created_at: string;
 }
 
+/**
+ * Every audience type the backend Audience_Resolver can evaluate — kept in
+ * sync with EventOS\Marketing\Audience_Repository::TYPES.
+ */
+export type AudienceType =
+  | "all"
+  | "event_purchasers"
+  | "event_ticket_type"
+  | "event_attendees"
+  | "event_non_attendees"
+  | "repeat_customers"
+  | "high_value"
+  | "recent_purchasers"
+  | "lapsed_customers"
+  | "segment";
+
+/** An audience definition — the rule, not the resolved people. */
 export interface AudienceSegment {
   id: number;
+  event_id: number | null;
   name: string;
   description: string;
+  type: AudienceType;
   criteria: Record<string, unknown>;
-  count: number;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+  /** Only present on the event-scoped `audiences()` list, which resolves counts eagerly. */
+  count?: number;
+}
+
+export interface AudiencePreviewPerson {
+  person_id: number;
+  display_name: string;
+  primary_email: string;
 }
 
 // ── Report types ──────────────────────────────────────────────────────────
@@ -967,6 +997,32 @@ export const eventsApi = {
     }),
   audiences: (eventId: number) =>
     unwrap<{ audiences: AudienceSegment[] }>(`events/${eventId}/marketing/audiences`),
+  listAudiences: (params: { eventId?: number; includeArchived?: boolean } = {}) =>
+    unwrap<{ audiences: AudienceSegment[] }>(
+      `marketing/audiences${query({
+        event_id: params.eventId,
+        include_archived: params.includeArchived ? 1 : undefined,
+      })}`,
+    ),
+  audience: (audienceId: number) => unwrap<AudienceSegment>(`marketing/audiences/${audienceId}`),
+  createAudience: (payload: EventPayload) =>
+    unwrap<AudienceSegment>("marketing/audiences", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAudience: (audienceId: number, payload: EventPayload) =>
+    unwrap<AudienceSegment>(`marketing/audiences/${audienceId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  archiveAudience: (audienceId: number) =>
+    unwrap<{ archived: boolean }>(`marketing/audiences/${audienceId}`, { method: "DELETE" }),
+  audienceCount: (audienceId: number) =>
+    unwrap<{ count: number }>(`marketing/audiences/${audienceId}/count`),
+  audiencePreview: (audienceId: number, limit = 5) =>
+    unwrap<{ count: number; preview: AudiencePreviewPerson[] }>(
+      `marketing/audiences/${audienceId}/preview${query({ limit })}`,
+    ),
 
   // ── Reports ───────────────────────────────────────────────────────────
   eventReport: (eventId: number) => unwrap<EventReportPayload>(`events/${eventId}/reports`),

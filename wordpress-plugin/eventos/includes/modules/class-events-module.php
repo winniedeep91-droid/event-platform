@@ -27,8 +27,15 @@ use EventOS\Events\Ticket_Order_Resolver;
 use EventOS\Events\Ticket_Repository;
 use EventOS\Events\Ticket_Type_Repository;
 use EventOS\Events\Ticketing_Service;
+use EventOS\Crm\Person_Identity_Repository;
+use EventOS\Crm\Person_Repository;
+use EventOS\Crm\Segment_Repository;
 use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
+use EventOS\Marketing\Audience_Repository;
+use EventOS\Marketing\Audience_Resolver;
+use EventOS\Marketing\Marketing_Capabilities;
+use EventOS\Marketing\Marketing_Schema;
 use EventOS\Rest\Marketing_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Ticketing_Controller;
@@ -147,7 +154,9 @@ final class Events_Module extends Abstract_Module {
 		if ( null === $this->marketing_service ) {
 			$this->marketing_service = new Marketing_Service(
 				new Campaign_Repository( $this->ticketing_service()->ticket_types() ),
-				new Promo_Link_Repository()
+				new Promo_Link_Repository(),
+				new Audience_Repository(),
+				new Audience_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Segment_Repository() )
 			);
 		}
 
@@ -161,8 +170,8 @@ final class Events_Module extends Abstract_Module {
 	 */
 	public function permissions(): array {
 		return array(
-			'capabilities' => Event_Capabilities::definitions(),
-			'grants'       => Event_Capabilities::grants(),
+			'capabilities' => array_merge( Event_Capabilities::definitions(), Marketing_Capabilities::definitions() ),
+			'grants'       => array_merge_recursive( Event_Capabilities::grants(), Marketing_Capabilities::grants() ),
 		);
 	}
 
@@ -251,6 +260,7 @@ final class Events_Module extends Abstract_Module {
 	 */
 	public function activate(): void {
 		Event_Schema::install();
+		Marketing_Schema::install();
 	}
 
 	/**
@@ -263,6 +273,7 @@ final class Events_Module extends Abstract_Module {
 		unset( $from_version );
 
 		Event_Schema::install();
+		Marketing_Schema::install();
 	}
 
 	/**
@@ -272,6 +283,7 @@ final class Events_Module extends Abstract_Module {
 	 */
 	public function init(): void {
 		Event_Schema::maybe_install();
+		Marketing_Schema::maybe_install();
 
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
 		add_action( 'eventos_register_search_entities', array( $this, 'register_search_entities' ) );

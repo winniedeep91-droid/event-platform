@@ -22,8 +22,11 @@ import {
   type SelectOption,
 } from "../../../ui";
 import {
+  crmApi,
   eventsApi,
+  type AudiencePreviewPerson,
   type AudienceSegment,
+  type AudienceType,
   type CampaignStatus,
   type DiscountCampaign,
   type DiscountType,
@@ -38,6 +41,38 @@ interface Props {
 const DISCOUNT_TYPE_OPTIONS: SelectOption[] = [
   { value: "percent", label: "Percentage discount" },
   { value: "fixed", label: "Fixed amount discount" },
+];
+
+const CAMPAIGN_STATUS_OPTIONS: SelectOption[] = [
+  { value: "draft", label: "Draft" },
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "archived", label: "Archived" },
+];
+
+// Event-scoped types use the current event implicitly; the rest describe a
+// person's brand-wide relationship/behaviour and are therefore created as
+// global audiences (reusable from every event's Marketing tab) even when
+// the operator starts from this one — see Audience_Repository's own event_id
+// handling for the backend half of this.
+const AUDIENCE_TYPE_OPTIONS: SelectOption[] = [
+  { value: "all", label: "All known people" },
+  { value: "event_purchasers", label: "This event — purchasers" },
+  { value: "event_ticket_type", label: "This event — ticket-type purchasers" },
+  { value: "event_attendees", label: "This event — attendees (checked in)" },
+  { value: "event_non_attendees", label: "This event — non-attendees" },
+  { value: "repeat_customers", label: "Repeat customers (2+ tickets)" },
+  { value: "high_value", label: "High-value customers (spend threshold)" },
+  { value: "recent_purchasers", label: "Recent purchasers" },
+  { value: "lapsed_customers", label: "Lapsed customers" },
+  { value: "segment", label: "Existing CRM segment" },
+];
+
+const EVENT_SCOPED_TYPES: AudienceType[] = [
+  "event_purchasers",
+  "event_ticket_type",
+  "event_attendees",
+  "event_non_attendees",
 ];
 
 function statusTone(status: CampaignStatus): "success" | "warning" | "neutral" | "danger" {
@@ -60,6 +95,8 @@ interface CampaignFormState {
   max_uses: string;
   expires_at: string;
   applies_to: "all" | "specific_types";
+  status: CampaignStatus;
+  audience_id: string;
 }
 
 const defaultCampaignForm = (): CampaignFormState => ({
@@ -71,6 +108,8 @@ const defaultCampaignForm = (): CampaignFormState => ({
   max_uses: "",
   expires_at: "",
   applies_to: "all",
+  status: "draft",
+  audience_id: "",
 });
 
 function fromCampaign(c: DiscountCampaign): CampaignFormState {
@@ -83,16 +122,23 @@ function fromCampaign(c: DiscountCampaign): CampaignFormState {
     max_uses: c.max_uses != null ? String(c.max_uses) : "",
     expires_at: toLocalInput(c.expires_at),
     applies_to: c.applies_to,
+    // draft/active/paused/archived only — "expired" is a computed display
+    // status (see Campaign_Status::effective()), never a value this form
+    // should try to set directly.
+    status: c.status === "expired" ? "active" : c.status,
+    audience_id: c.audience_id != null ? String(c.audience_id) : "",
   };
 }
 
 function CampaignDrawer({
   eventId,
   editing,
+  audienceOptions,
   onClose,
 }: {
   eventId: number;
   editing: DiscountCampaign | null;
+  audienceOptions: SelectOption[];
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -113,6 +159,12 @@ function CampaignDrawer({
     max_uses: form.max_uses ? Number(form.max_uses) : null,
     expires_at: fromLocalInput(form.expires_at),
     applies_to: form.applies_to,
+    // Sent explicitly on every save (create AND edit) so editing a campaign
+    // without touching status can never silently reset it — see
+    // Campaign_Repository::sanitize()'s $default_status parameter for the
+    // matching backend half of this fix.
+    status: form.status,
+    audience_id: form.audience_id ? Number(form.audience_id) : null,
   });
 
   const save = useMutation({
@@ -217,6 +269,20 @@ function CampaignDrawer({
             After creating the campaign, edit it to select specific ticket types.
           </Alert>
         )}
+        <Select
+          label="Status"
+          value={form.status}
+          options={CAMPAIGN_STATUS_OPTIONS}
+          onChange={(e) => set("status", e.target.value as CampaignStatus)}
+          hint="Active publishes the linked WooCommerce coupon so the code works at checkout."
+        />
+        <Select
+          label="Audience"
+          value={form.audience_id}
+          options={[{ value: "", label: "No audience — coupon only" }, ...audienceOptions]}
+          onChange={(e) => set("audience_id", e.target.value)}
+          hint="Who this campaign is for. Sending isn't built yet — this just records the intended audience."
+        />
       </Stack>
     </Drawer>
   );
@@ -311,13 +377,221 @@ function PromoLinkDrawer({ eventId, onClose }: { eventId: number; onClose: () =>
   );
 }
 
+interface AudienceFormState {
+  name: string;
+  description: string;
+  type: AudienceType;
+  ticket_type_id: string;
+  min_spend: string;
+  days: string;
+  segment_id: string;
+}
+
+const defaultAudienceForm = (): AudienceFormState => ({
+  name: "",
+  description: "",
+  type: "event_purchasers",
+  ticket_type_id: "",
+  min_spend: "",
+  days: "30",
+  segment_id: "",
+});
+
+function AudienceDrawer({
+  eventId,
+  ticketTypeOptions,
+  segmentOptions,
+  onClose,
+}: {
+  eventId: number;
+  ticketTypeOptions: SelectOption[];
+  segmentOptions: SelectOption[];
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [form, setForm] = useState<AudienceFormState>(defaultAudienceForm());
+  const [previewedId, setPreviewedId] = useState<number | null>(null);
+
+  const set = <K extends keyof AudienceFormState>(k: K, v: AudienceFormState[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const isEventScoped = EVENT_SCOPED_TYPES.includes(form.type);
+
+  const criteria = (): Record<string, unknown> => {
+    switch (form.type) {
+      case "event_ticket_type":
+        return { ticket_type_id: Number(form.ticket_type_id) || 0 };
+      case "high_value":
+        return { min_spend: Number(form.min_spend) || 0 };
+      case "recent_purchasers":
+      case "lapsed_customers":
+        return { days: Number(form.days) || 0 };
+      case "segment":
+        return { segment_id: Number(form.segment_id) || 0 };
+      default:
+        return {};
+    }
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      eventsApi.createAudience({
+        name: form.name,
+        description: form.description,
+        type: form.type,
+        event_id: isEventScoped ? eventId : null,
+        criteria: criteria(),
+      }),
+    onSuccess: (created) => {
+      toast.success("Audience created.", "Saved");
+      void qc.invalidateQueries({ queryKey: ["eventos", "marketing", "audiences", eventId] });
+      setPreviewedId(created.id);
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Save failed"),
+  });
+
+  const preview = useQuery({
+    queryKey: ["eventos", "marketing", "audience-preview", previewedId],
+    queryFn: () => eventsApi.audiencePreview(previewedId as number),
+    enabled: previewedId !== null,
+  });
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title="New audience"
+      description="An audience is a live rule against Audience CRM — it always reflects who currently matches, not a fixed list."
+      footer={
+        previewedId === null ? (
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
+              Create audience
+            </Button>
+          </>
+        ) : (
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        )
+      }
+    >
+      {previewedId === null ? (
+        <Stack>
+          <Input
+            label="Audience name"
+            required
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="e.g. Repeat customers"
+          />
+          <Textarea
+            label="Description"
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+            placeholder="Optional — what this audience is for"
+          />
+          <Select
+            label="Audience type"
+            value={form.type}
+            options={AUDIENCE_TYPE_OPTIONS}
+            onChange={(e) => set("type", e.target.value as AudienceType)}
+          />
+          {isEventScoped && (
+            <Alert tone="info" title="Scoped to this event">
+              This audience will always resolve against <strong>this event only</strong>.
+            </Alert>
+          )}
+          {form.type === "event_ticket_type" && (
+            <Select
+              label="Ticket type"
+              required
+              value={form.ticket_type_id}
+              options={ticketTypeOptions}
+              onChange={(e) => set("ticket_type_id", e.target.value)}
+            />
+          )}
+          {form.type === "high_value" && (
+            <Input
+              label="Minimum lifetime spend (R)"
+              type="number"
+              min={0}
+              step="0.01"
+              required
+              value={form.min_spend}
+              onChange={(e) => set("min_spend", e.target.value)}
+              placeholder="1000"
+            />
+          )}
+          {(form.type === "recent_purchasers" || form.type === "lapsed_customers") && (
+            <Input
+              label={
+                form.type === "recent_purchasers"
+                  ? "Purchased within the last (days)"
+                  : "No purchase in the last (days)"
+              }
+              type="number"
+              min={1}
+              required
+              value={form.days}
+              onChange={(e) => set("days", e.target.value)}
+              placeholder="30"
+            />
+          )}
+          {form.type === "segment" && (
+            <Select
+              label="CRM segment"
+              required
+              value={form.segment_id}
+              options={segmentOptions}
+              onChange={(e) => set("segment_id", e.target.value)}
+            />
+          )}
+        </Stack>
+      ) : (
+        <Stack>
+          <Alert tone="success" title="Audience created">
+            {form.name}
+          </Alert>
+          {preview.isLoading ? (
+            <LoadingState label="Resolving audience…" />
+          ) : preview.data ? (
+            <Stack>
+              <StatCard label="Estimated audience" value={preview.data.count.toLocaleString()} />
+              <div>
+                <strong>Preview</strong>
+                {preview.data.preview.length === 0 ? (
+                  <p className="eos-page__description">No people currently match this audience.</p>
+                ) : (
+                  <ul>
+                    {preview.data.preview.map((person: AudiencePreviewPerson) => (
+                      <li key={person.person_id}>
+                        {person.display_name ||
+                          person.primary_email ||
+                          `Person #${person.person_id}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Stack>
+          ) : null}
+        </Stack>
+      )}
+    </Drawer>
+  );
+}
+
 export function MarketingTab({ eventId }: Props) {
   const toast = useToast();
   const qc = useQueryClient();
   const [campaignDrawer, setCampaignDrawer] = useState<DiscountCampaign | null | "new">(null);
   const [linkDrawer, setLinkDrawer] = useState(false);
+  const [audienceDrawer, setAudienceDrawer] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: "campaign" | "link";
+    type: "campaign" | "link" | "audience";
     id: number;
     name: string;
   } | null>(null);
@@ -338,15 +612,32 @@ export function MarketingTab({ eventId }: Props) {
     retry: false,
   });
 
+  const ticketTypes = useQuery({
+    queryKey: ["eventos", "ticketing", "ticket-types", eventId],
+    queryFn: () => eventsApi.ticketTypes(eventId),
+  });
+
+  const segments = useQuery({
+    queryKey: ["eventos", "crm", "segments-for-audience"],
+    queryFn: () => crmApi.segments(),
+  });
+
   const removeItem = useMutation({
-    mutationFn: ({ type, id }: { type: "campaign" | "link"; id: number }) =>
-      type === "campaign"
-        ? eventsApi.removeDiscountCampaign(eventId, id)
-        : eventsApi.removePromoLink(eventId, id),
+    mutationFn: ({ type, id }: { type: "campaign" | "link" | "audience"; id: number }) => {
+      if (type === "campaign") return eventsApi.removeDiscountCampaign(eventId, id);
+      if (type === "link") return eventsApi.removePromoLink(eventId, id);
+      return eventsApi.archiveAudience(id).then(() => ({ deleted: true }));
+    },
     onSuccess: (_, { type }) => {
-      toast.success(`${type === "campaign" ? "Campaign" : "Link"} deleted.`, "Deleted");
+      const label = type === "campaign" ? "Campaign" : type === "link" ? "Link" : "Audience";
+      toast.success(`${label} deleted.`, "Deleted");
       void qc.invalidateQueries({
-        queryKey: ["eventos", "marketing", type === "campaign" ? "campaigns" : "links", eventId],
+        queryKey: [
+          "eventos",
+          "marketing",
+          type === "campaign" ? "campaigns" : type === "link" ? "links" : "audiences",
+          eventId,
+        ],
       });
       setDeleteTarget(null);
     },
@@ -356,6 +647,18 @@ export function MarketingTab({ eventId }: Props) {
   const campaignList = campaigns.data?.campaigns ?? [];
   const linkList = links.data?.links ?? [];
   const audienceList = audiences.data?.audiences ?? [];
+  const ticketTypeOptions: SelectOption[] = (ticketTypes.data?.ticket_types ?? []).map((t) => ({
+    value: String(t.id),
+    label: t.name,
+  }));
+  const segmentOptions: SelectOption[] = (segments.data?.segments ?? []).map((s) => ({
+    value: String(s.id),
+    label: s.name,
+  }));
+  const audienceOptions: SelectOption[] = audienceList.map((a) => ({
+    value: String(a.id),
+    label: a.name,
+  }));
 
   const activeCampaigns = campaignList.filter((c) => c.status === "active").length;
   const totalUses = campaignList.reduce((acc, c) => acc + c.uses, 0);
@@ -390,6 +693,14 @@ export function MarketingTab({ eventId }: Props) {
       key: "status",
       header: "Status",
       cell: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge>,
+    },
+    {
+      key: "audience_id",
+      header: "Audience",
+      cell: (row) => {
+        const audience = audienceList.find((a) => a.id === row.audience_id);
+        return audience ? audience.name : <span className="eos-page__description">—</span>;
+      },
     },
     {
       key: "uses",
@@ -495,6 +806,38 @@ export function MarketingTab({ eventId }: Props) {
     },
   ];
 
+  const audienceColumns: DataTableColumn<AudienceSegment>[] = [
+    { key: "name", header: "Audience", cell: (row) => <strong>{row.name}</strong> },
+    {
+      key: "type",
+      header: "Type",
+      cell: (row) => AUDIENCE_TYPE_OPTIONS.find((o) => o.value === row.type)?.label ?? row.type,
+    },
+    {
+      key: "scope",
+      header: "Scope",
+      cell: (row) => (row.event_id ? "This event" : "Global"),
+    },
+    {
+      key: "count",
+      header: "Estimated size",
+      cell: (row) => (row.count ?? 0).toLocaleString(),
+    },
+    {
+      key: "id",
+      header: "",
+      cell: (row) => (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => setDeleteTarget({ type: "audience", id: row.id, name: row.name })}
+        >
+          Archive
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <Stack>
       {/* Stats */}
@@ -506,7 +849,7 @@ export function MarketingTab({ eventId }: Props) {
         />
         <StatCard label="Discount uses" value={totalUses.toLocaleString()} />
         <StatCard label="Promo links" value={linkList.length} hint={`${totalClicks} clicks`} />
-        {audienceList.length > 0 && <StatCard label="Audiences" value={audienceList.length} />}
+        <StatCard label="Audiences" value={audienceList.length} />
       </Grid>
 
       <Alert tone="info" title="WooCommerce coupons">
@@ -514,6 +857,33 @@ export function MarketingTab({ eventId }: Props) {
         validation and redemption is handled by WooCommerce. EventOS tracks campaign usage per
         event.
       </Alert>
+
+      {/* Audiences */}
+      <Card
+        title="Audiences"
+        actions={
+          <Button variant="primary" onClick={() => setAudienceDrawer(true)}>
+            New audience
+          </Button>
+        }
+      >
+        {audiences.isLoading ? (
+          <LoadingState label="Loading audiences…" />
+        ) : audiences.error ? (
+          <Alert tone="danger" title="Could not load audiences">
+            {errorMessage(audiences.error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption="Marketing audiences available to this event"
+            columns={audienceColumns}
+            rows={audienceList}
+            getRowId={(row) => String(row.id)}
+            emptyTitle="No audiences yet"
+            emptyDescription="Define who a campaign is for — resolved live from Audience CRM, never a fixed list."
+          />
+        )}
+      </Card>
 
       {/* Discount campaigns */}
       <Card
@@ -569,43 +939,37 @@ export function MarketingTab({ eventId }: Props) {
         )}
       </Card>
 
-      {/* Audience segments */}
-      {audienceList.length > 0 && (
-        <Card title="Audience segments">
-          <DataTable
-            caption="Audience segments for this event"
-            columns={[
-              { key: "name", header: "Segment", cell: (row) => <strong>{row.name}</strong> },
-              { key: "description", header: "Description", cell: (row) => row.description || "—" },
-              { key: "count", header: "Guests", cell: (row) => row.count.toLocaleString() },
-            ]}
-            rows={audienceList}
-            getRowId={(row) => String(row.id)}
-            emptyTitle="No segments"
-          />
-        </Card>
-      )}
-
       {/* Drawers */}
       {campaignDrawer !== null && (
         <CampaignDrawer
           eventId={eventId}
           editing={campaignDrawer === "new" ? null : campaignDrawer}
+          audienceOptions={audienceOptions}
           onClose={() => setCampaignDrawer(null)}
         />
       )}
       {linkDrawer && <PromoLinkDrawer eventId={eventId} onClose={() => setLinkDrawer(false)} />}
+      {audienceDrawer && (
+        <AudienceDrawer
+          eventId={eventId}
+          ticketTypeOptions={ticketTypeOptions}
+          segmentOptions={segmentOptions}
+          onClose={() => setAudienceDrawer(false)}
+        />
+      )}
 
       {/* Delete confirm */}
       <ConfirmDialog
         open={deleteTarget !== null}
-        title={`Delete "${deleteTarget?.name}"?`}
+        title={`${deleteTarget?.type === "audience" ? "Archive" : "Delete"} "${deleteTarget?.name}"?`}
         description={
           deleteTarget?.type === "campaign"
             ? "This will also archive the linked WooCommerce coupon."
-            : "This cannot be undone."
+            : deleteTarget?.type === "audience"
+              ? "Archived audiences stop appearing in pickers, but any campaign already referencing this one keeps working."
+              : "This cannot be undone."
         }
-        confirmLabel="Delete"
+        confirmLabel={deleteTarget?.type === "audience" ? "Archive" : "Delete"}
         destructive
         busy={removeItem.isPending}
         onCancel={() => setDeleteTarget(null)}

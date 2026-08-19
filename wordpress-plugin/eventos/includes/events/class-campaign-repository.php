@@ -36,6 +36,7 @@ final class Campaign_Repository {
 	private const COLUMNS = array(
 		'event_id'        => '%d',
 		'wc_coupon_id'     => '%d',
+		'audience_id'      => '%d',
 		'name'             => '%s',
 		'code'             => '%s',
 		'type'             => '%s',
@@ -113,7 +114,7 @@ final class Campaign_Repository {
 	public function create( int $event_id, array $input ) {
 		global $wpdb;
 
-		$data = $this->sanitize( $input, $event_id, 0 );
+		$data = $this->sanitize( $input, $event_id, 0, 'draft' );
 
 		if ( is_wp_error( $data ) ) {
 			return $data;
@@ -163,7 +164,7 @@ final class Campaign_Repository {
 			return new WP_Error( 'eventos_not_found', __( 'That campaign no longer exists.', 'eventos' ), array( 'status' => 404 ) );
 		}
 
-		$data = $this->sanitize( $input, (int) $existing['event_id'], $id );
+		$data = $this->sanitize( $input, (int) $existing['event_id'], $id, (string) $existing['status'] );
 
 		if ( is_wp_error( $data ) ) {
 			return $data;
@@ -239,12 +240,20 @@ final class Campaign_Repository {
 	/**
 	 * Sanitize and validate campaign input.
 	 *
-	 * @param array<string, mixed> $input       Raw input.
-	 * @param int                  $event_id    Owning event.
-	 * @param int                  $exclude_id  Campaign ID to exclude from the code uniqueness check.
+	 * `$default_status` is the status to fall back to when `$input` omits
+	 * the key entirely — `create()` passes `'draft'` (a new campaign starts
+	 * there), `update()` passes the campaign's own current status, so an
+	 * edit that never touches status preserves it instead of silently
+	 * resetting to draft. Passing an explicit `status` in `$input` always
+	 * wins either way, so intentional status changes still work.
+	 *
+	 * @param array<string, mixed> $input          Raw input.
+	 * @param int                  $event_id       Owning event.
+	 * @param int                  $exclude_id     Campaign ID to exclude from the code uniqueness check.
+	 * @param string               $default_status Status to use when `$input` has none.
 	 * @return array<string, mixed>|WP_Error
 	 */
-	private function sanitize( array $input, int $event_id, int $exclude_id ): array|WP_Error {
+	private function sanitize( array $input, int $event_id, int $exclude_id, string $default_status = 'draft' ): array|WP_Error {
 		$name = trim( (string) ( $input['name'] ?? '' ) );
 		$code = strtoupper( trim( (string) ( $input['code'] ?? '' ) ) );
 
@@ -276,14 +285,17 @@ final class Campaign_Repository {
 			$ticket_type_ids = array_values( array_unique( array_map( 'intval', (array) ( $input['ticket_type_ids'] ?? array() ) ) ) );
 		}
 
-		$status = (string) ( $input['status'] ?? 'draft' );
+		$status = (string) ( $input['status'] ?? $default_status );
 
 		if ( ! in_array( $status, array( 'draft', 'active', 'paused', 'archived' ), true ) ) {
-			$status = 'draft';
+			$status = $default_status;
 		}
+
+		$audience_id = array_key_exists( 'audience_id', $input ) && null !== $input['audience_id'] ? max( 0, (int) $input['audience_id'] ) : 0;
 
 		return array(
 			'event_id'        => $event_id,
+			'audience_id'     => $audience_id > 0 ? $audience_id : null,
 			'name'            => $name,
 			'code'            => $code,
 			'type'            => $type,
@@ -435,6 +447,7 @@ final class Campaign_Repository {
 			'id'              => (int) $row['id'],
 			'event_id'        => (int) $row['event_id'],
 			'wc_coupon_id'    => (int) $row['wc_coupon_id'],
+			'audience_id'     => empty( $row['audience_id'] ) ? null : (int) $row['audience_id'],
 			'name'            => (string) $row['name'],
 			'code'            => (string) $row['code'],
 			'type'            => (string) $row['type'],

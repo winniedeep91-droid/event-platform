@@ -261,6 +261,15 @@ final class Core_Module extends Abstract_Module {
 	 * @return bool
 	 */
 	public function serve_raw_response( $served, $result ) {
+		// Every module with raw-body (CSV/PDF) download endpoints hooks
+		// this same filter (see Woocommerce_Module::serve_raw_response()).
+		// Once one of them has already echoed the body, every later
+		// callback in the chain must no-op — otherwise the response body
+		// is echoed once per hooked module, corrupting every export.
+		if ( $served ) {
+			return $served;
+		}
+
 		if ( ! $result instanceof WP_REST_Response ) {
 			return $served;
 		}

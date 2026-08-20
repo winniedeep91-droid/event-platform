@@ -109,6 +109,12 @@ final class Admin_Assets {
 				'view_dashboard'  => current_user_can( Capabilities::VIEW_DASHBOARD ),
 				'manage_settings' => current_user_can( Capabilities::MANAGE_SETTINGS ),
 				'manage_team'     => current_user_can( Capabilities::MANAGE_TEAM ),
+				// Registered by core (see Permissions::bootstrap()), not by
+				// the Finance module — referenced by the plain capability
+				// string here rather than EventOS\Finance\Finance_Capabilities
+				// so this file never depends on an optional module.
+				'view_finance'    => current_user_can( 'eventos_view_finance' ),
+				'manage_finance'  => current_user_can( 'eventos_manage_finance' ),
 			),
 			'currentUser'  => array(
 				'id'     => (int) $user->ID,

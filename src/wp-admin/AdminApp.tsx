@@ -32,6 +32,7 @@ import {
   SynchronisationView,
 } from "./views/woocommerce";
 import { PeopleListView, PersonProfileView, SegmentsView, InsightsView } from "./views/crm";
+import { FinanceOverviewView } from "./views/finance";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { Drawer } from "./ui";
@@ -122,6 +123,10 @@ export function AdminApp({ view }: { view: string }) {
     content = <SegmentsView />;
   } else if (view === "crm/insights") {
     content = <InsightsView />;
+
+    // ── Finance module ─────────────────────────────────────────────────────
+  } else if (view === "finance/overview") {
+    content = <FinanceOverviewView />;
 
     // ── Settings ────────────────────────────────────────────────────────────
   } else if (view === "settings/team") {

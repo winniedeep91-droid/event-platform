@@ -14,6 +14,7 @@ use EventOS\Admin\Admin_Menu;
 use EventOS\Modules\Core_Module;
 use EventOS\Modules\Crm_Module;
 use EventOS\Modules\Events_Module;
+use EventOS\Modules\Finance_Module;
 use EventOS\Modules\Platform_Module;
 use EventOS\Modules\Woocommerce_Module;
 
@@ -116,6 +117,7 @@ final class Plugin {
 		$this->modules->add( new Events_Module() );
 		$this->modules->add( new Woocommerce_Module() );
 		$this->modules->add( new Crm_Module() );
+		$this->modules->add( new Finance_Module() );
 
 		/**
 		 * Filter the list of EventOS modules before they are initialised.

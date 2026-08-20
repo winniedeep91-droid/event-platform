@@ -16,6 +16,8 @@ export interface EventOSConfig {
     view_dashboard: boolean;
     manage_settings: boolean;
     manage_team: boolean;
+    view_finance: boolean;
+    manage_finance: boolean;
   };
   currentUser: {
     id: number;
@@ -2169,4 +2171,98 @@ export const searchApi = {
   entities: () => unwrap<SearchEntityInfo[]>("search/entities"),
   search: (term: string, perPage = 8) =>
     unwrap<SearchResponse>(`search${query({ q: term, per_page: perPage })}`),
+};
+
+// ── Finance ──────────────────────────────────────────────────────────────
+
+export interface ExpenseRecord {
+  id: number;
+  event_id: number;
+  category: string;
+  description: string;
+  amount: number;
+  currency: string;
+  expense_date: string | null;
+  status: "recorded" | "void";
+  reference: string;
+  payee: string;
+  notes: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpenseListParams {
+  search?: string;
+  category?: string;
+  status?: string;
+  orderby?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  per_page?: number;
+}
+
+export interface FinancePnlPayload {
+  event_id: number;
+  currency: string;
+  revenue: {
+    ticket_revenue: number;
+    other_revenue: number;
+    total_revenue: number;
+  };
+  adjustments: {
+    discounts: number;
+    refunds: number;
+    other_adjustments: number;
+    total_adjustments: number;
+  };
+  fees: {
+    payment_fees: number;
+    fee_status: "recorded" | "unknown";
+    platform_fees: number;
+    other_fees: number;
+    total_fees: number;
+  };
+  expenses: {
+    by_category: Array<{ category: string; total: number; count: number }>;
+    total_expenses: number;
+  };
+  result: {
+    gross_revenue: number;
+    net_revenue: number;
+    total_fees: number;
+    total_expenses: number;
+    net_profit: number;
+    profit_margin: number | null;
+  };
+  orders: number;
+}
+
+export const financeApi = {
+  summary: (eventId: number) => unwrap<FinancePnlPayload>(`events/${eventId}/finance/summary`),
+  orgSummary: (eventIds: number[] = []) =>
+    unwrap<FinancePnlPayload>(
+      `finance/summary${eventIds.length ? query({ event_ids: eventIds.join(",") }) : ""}`,
+    ),
+  expenses: (eventId: number, params: ExpenseListParams = {}) =>
+    unwrapCollection<ExpenseRecord>(`events/${eventId}/finance/expenses${query({ ...params })}`),
+  createExpense: (eventId: number, data: Partial<ExpenseRecord>) =>
+    unwrap<ExpenseRecord>(`events/${eventId}/finance/expenses`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateExpense: (eventId: number, expenseId: number, data: Partial<ExpenseRecord>) =>
+    unwrap<ExpenseRecord>(`events/${eventId}/finance/expenses/${expenseId}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  voidExpense: (eventId: number, expenseId: number) =>
+    unwrap<{ voided: boolean }>(`events/${eventId}/finance/expenses/${expenseId}`, {
+      method: "DELETE",
+    }),
+  expenseCategories: () => unwrap<{ categories: string[] }>("finance/expense-categories"),
+  exportPnl: (eventId: number, format: "csv" | "json" | "pdf") =>
+    `${config().restUrl}exports/event_pnl/${format}?event_id=${eventId}&_wpnonce=${config().nonce}`,
+  exportExpenses: (eventId: number, format: "csv" | "json" | "pdf") =>
+    `${config().restUrl}exports/event_expenses/${format}?event_id=${eventId}&_wpnonce=${config().nonce}`,
 };

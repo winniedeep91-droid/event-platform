@@ -473,6 +473,13 @@ final class Woocommerce_Module extends Abstract_Module {
 	 * @return bool
 	 */
 	public function serve_raw_response( $served, $result ) {
+		// See Core_Module::serve_raw_response()'s docblock: several modules
+		// hook this same filter, so every callback after the one that
+		// already served the body must no-op.
+		if ( $served ) {
+			return $served;
+		}
+
 		if ( ! $result instanceof WP_REST_Response ) {
 			return $served;
 		}

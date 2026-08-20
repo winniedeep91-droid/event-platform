@@ -1,7 +1,7 @@
-/** Event workspace: the eight operational tabs for a single event. */
+/** Event workspace: the operational tabs for a single event. */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { eventsApi, type EventRecord } from "../../api";
+import { config, eventsApi, type EventRecord } from "../../api";
 import {
   Alert,
   Badge,
@@ -37,6 +37,7 @@ import {
   venueLabel,
 } from "./shared";
 import {
+  FinanceTab,
   GuestsTab,
   MarketingTab,
   OrdersTab,
@@ -345,6 +346,9 @@ export function EventWorkspaceView({ eventId }: { eventId: number }) {
         label: "Reports",
         content: <ReportsTab eventId={event.id} />,
       },
+      ...(config().capabilities.view_finance
+        ? [{ id: "finance", label: "Finance", content: <FinanceTab eventId={event.id} /> }]
+        : []),
       { id: "settings", label: "Settings", content: <SettingsTab event={event} /> },
     ];
   }, [event, options.data]);

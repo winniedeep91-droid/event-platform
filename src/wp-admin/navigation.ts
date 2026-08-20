@@ -74,6 +74,11 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "finance",
+    label: "Finance",
+    items: [{ slug: "eventos-finance", label: "Finance" }],
+  },
+  {
     id: "settings",
     label: "Settings",
     collapsible: true,

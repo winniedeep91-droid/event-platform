@@ -278,6 +278,21 @@ final class Ticket_Order_Resolver {
 			$order->get_refunds()
 		);
 
+		// WooCommerce fee line items — the only processing/gateway fee data
+		// this install actually has (no Stripe/PayFast fee meta is
+		// captured anywhere). Consumed by Finance_Report_Builder to
+		// distinguish a recorded fee from an unknown one rather than ever
+		// guessing a gateway percentage.
+		$fees = array_map(
+			static function ( $fee ): array {
+				return array(
+					'name'  => (string) $fee->get_name(),
+					'total' => (float) $fee->get_total(),
+				);
+			},
+			array_values( $order->get_fees() )
+		);
+
 		$created  = $order->get_date_created();
 		$modified = $order->get_date_modified();
 
@@ -293,6 +308,8 @@ final class Ticket_Order_Resolver {
 			'total'            => (float) $order->get_total(),
 			'subtotal'         => (float) $order->get_subtotal(),
 			'tax'              => (float) $order->get_total_tax(),
+			'discount_total'   => (float) $order->get_discount_total(),
+			'fees'             => $fees,
 			'currency'         => $order->get_currency(),
 			'ticket_count'     => $ticket_count,
 			'tickets'          => $tickets,

@@ -22,6 +22,7 @@ use EventOS\Events\Event_Status;
 use EventOS\Events\Guest_Repository;
 use EventOS\Events\Marketing_Service;
 use EventOS\Events\Promo_Link_Repository;
+use EventOS\Events\Ticket_Display;
 use EventOS\Events\Ticket_Fulfillment;
 use EventOS\Events\Ticket_Order_Resolver;
 use EventOS\Events\Ticket_Repository;
@@ -357,6 +358,7 @@ final class Events_Module extends Abstract_Module {
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 
 		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository(), $this->waitlist_service() ) )->bootstrap();
+		( new Ticket_Display( new Ticket_Repository(), new Ticket_Type_Repository() ) )->bootstrap();
 
 		// Registered directly here, not via the `eventos_register_jobs`
 		// hook: that hook fires from inside Core_Module::init(), which has

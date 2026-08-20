@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import jsQR from "jsqr";
 import {
   Alert,
   Badge,
@@ -16,8 +17,249 @@ import {
   type DataTableColumn,
   type Tone,
 } from "../../../ui";
-import { eventsApi, type ScanOutcome, type ScanRecord } from "../../../api";
+import { eventsApi, type ScanOutcome, type ScanRecord, type ScanResult } from "../../../api";
 import { errorMessage, formatDateTime } from "../shared";
+
+/** Minimum time before the same decoded code is accepted again, so holding a
+ * ticket in front of the camera for a moment doesn't fire repeat scans. */
+const RESCAN_COOLDOWN_MS = 4000;
+
+/** Short confirmation/error tone, synthesized so no audio asset is needed. */
+function playBeep(kind: "success" | "error") {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = kind === "success" ? 880 : 220;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    osc.onended = () => void ctx.close();
+  } catch {
+    // Audio is a nicety, never block scanning on it.
+  }
+}
+
+function CameraScanner({ eventId }: { eventId: number }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastSeenRef = useRef<Map<string, number>>(new Map());
+  const pendingRef = useRef(false);
+
+  const [running, setRunning] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<ScanResult | null>(null);
+  const [flash, setFlash] = useState<"success" | "warning" | "danger" | null>(null);
+
+  const validate = useMutation({
+    mutationFn: (code: string) => eventsApi.validateTicket(eventId, code, "qr"),
+    onSuccess: (res) => {
+      pendingRef.current = false;
+      setLastResult(res);
+      const tone =
+        res.outcome === "admitted"
+          ? "success"
+          : res.outcome === "already_scanned"
+            ? "warning"
+            : "danger";
+      setFlash(tone);
+      playBeep(res.outcome === "admitted" ? "success" : "error");
+      window.setTimeout(() => setFlash(null), 600);
+      void qc.invalidateQueries({ queryKey: ["eventos", "scanner", "count", eventId] });
+      void qc.invalidateQueries({ queryKey: ["eventos", "scan-history", eventId] });
+    },
+    onError: (err: unknown) => {
+      pendingRef.current = false;
+      toast.error(errorMessage(err), "Validation failed");
+    },
+  });
+
+  const handleDecoded = (code: string) => {
+    const now = Date.now();
+    const seenAt = lastSeenRef.current.get(code);
+    if (pendingRef.current || (seenAt && now - seenAt < RESCAN_COOLDOWN_MS)) return;
+    lastSeenRef.current.set(code, now);
+    pendingRef.current = true;
+    validate.mutate(code);
+  };
+
+  useEffect(() => {
+    if (!running) return;
+
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const decoded = jsQR(frame.data, frame.width, frame.height, {
+            inversionAttempts: "dontInvert",
+          });
+          if (decoded && decoded.data) handleDecoded(decoded.data);
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setCameraError(null);
+        rafRef.current = requestAnimationFrame(tick);
+      } catch (err) {
+        setCameraError(
+          err instanceof DOMException && err.name === "NotAllowedError"
+            ? "Camera access was denied. Allow camera permission for this site and try again."
+            : "Could not access a camera on this device.",
+        );
+        setRunning(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
+  const secureContextAvailable = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
+
+  return (
+    <Card title="Camera scanner">
+      <Stack>
+        {!secureContextAvailable ? (
+          <Alert tone="warning" title="Camera unavailable">
+            Scanning with the camera requires this page to be loaded over HTTPS. Use manual entry
+            below, or open this screen on a secure (https://) address.
+          </Alert>
+        ) : (
+          <>
+            <div className="eos-inline">
+              {!running ? (
+                <Button variant="primary" onClick={() => setRunning(true)}>
+                  Start camera
+                </Button>
+              ) : (
+                <Button variant="danger" onClick={() => setRunning(false)}>
+                  Stop camera
+                </Button>
+              )}
+            </div>
+
+            {cameraError && (
+              <Alert tone="danger" title="Camera error">
+                {cameraError}
+              </Alert>
+            )}
+
+            {running && (
+              <div
+                style={{
+                  position: "relative",
+                  maxWidth: 480,
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  border: `3px solid ${
+                    flash === "success"
+                      ? "var(--eos-success)"
+                      : flash === "warning"
+                        ? "var(--eos-warning)"
+                        : flash === "danger"
+                          ? "var(--eos-danger)"
+                          : "var(--eos-border)"
+                  }`,
+                  transition: "border-color 150ms ease",
+                }}
+              >
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  style={{ width: "100%", display: "block", background: "#000" }}
+                />
+                <canvas ref={canvasRef} style={{ display: "none" }} />
+              </div>
+            )}
+          </>
+        )}
+
+        {lastResult && (
+          <Alert
+            tone={
+              lastResult.outcome === "admitted"
+                ? "success"
+                : lastResult.outcome === "already_scanned"
+                  ? "warning"
+                  : "danger"
+            }
+            title={
+              lastResult.outcome === "admitted"
+                ? "Admitted"
+                : lastResult.outcome === "already_scanned"
+                  ? "Already scanned"
+                  : lastResult.outcome === "cancelled"
+                    ? "Cancelled"
+                    : "Invalid"
+            }
+          >
+            <Stack>
+              <p className="eos-page__description">{lastResult.message}</p>
+              {lastResult.valid && (
+                <Grid minColumnWidth={140}>
+                  <div>
+                    <p className="eos-field__label">Guest</p>
+                    <strong>{lastResult.guest_name || "—"}</strong>
+                  </div>
+                  <div>
+                    <p className="eos-field__label">Ticket type</p>
+                    <span>{lastResult.ticket_type_name || "—"}</span>
+                  </div>
+                  <div>
+                    <p className="eos-field__label">Ticket #</p>
+                    <span>{lastResult.ticket_number || "—"}</span>
+                  </div>
+                </Grid>
+              )}
+            </Stack>
+          </Alert>
+        )}
+      </Stack>
+    </Card>
+  );
+}
 
 interface Props {
   eventId: number;
@@ -303,10 +545,11 @@ export function ScannerTab({ eventId }: Props) {
   return (
     <Stack>
       <Alert tone="info" title="Scanner">
-        Use the EventOS Scanner app on a mobile device or tablet to scan QR codes at the door.
-        Manual validation below lets you look up a ticket by number directly from this screen.
+        Open this screen on a phone or tablet at the door to scan tickets with the camera, or use
+        manual entry below to look up a ticket by number.
       </Alert>
       <LiveCounter eventId={eventId} />
+      <CameraScanner eventId={eventId} />
       <ManualValidation eventId={eventId} />
       <ScannerSessions eventId={eventId} />
       <ScanHistory eventId={eventId} />

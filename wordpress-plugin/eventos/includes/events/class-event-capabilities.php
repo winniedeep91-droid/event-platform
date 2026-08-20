@@ -59,6 +59,15 @@ final class Event_Capabilities {
 			'marketing'     => array( self::VIEW_EVENTS ),
 			'finance'       => array( self::VIEW_EVENTS ),
 			'door_staff'    => array( self::VIEW_EVENTS, self::CHECK_IN_GUESTS ),
+			// Core (Permissions::bootstrap()) describes this role as
+			// "Ticket scanning only, no dashboard access" and grants it
+			// only eventos_scan_tickets — a capability nothing in the REST
+			// layer actually checks. Without this grant the role could
+			// never call POST /scanner/validate, the one action it exists
+			// for. Deliberately not VIEW_EVENTS too: that would pull in
+			// the scanner/sessions, scanner/history and scanner/count
+			// reads the role's "no dashboard access" description excludes.
+			'scanner'       => array( self::CHECK_IN_GUESTS ),
 		);
 	}
 }

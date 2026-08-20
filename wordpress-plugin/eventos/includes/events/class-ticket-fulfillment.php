@@ -309,6 +309,23 @@ final class Ticket_Fulfillment {
 		$customer_id     = (int) $order->get_customer_id();
 		$affected_types  = array();
 
+		// A cancelled ticket is only ever eligible for reactivation when
+		// the order has never had any money refunded on it — i.e. it was
+		// cancelled purely by a status transition (cancelled/failed),
+		// never by wc_create_refund(). get_total_refunded() is
+		// WooCommerce's own live, storage-mode-agnostic refund ledger for
+		// this order (works identically under HPOS and legacy post-based
+		// storage), so this needs no new EventOS column: a refund of any
+		// kind — itemized against a specific ticket, or a manual/
+		// non-itemized amount that falls back to cancelling every ticket
+		// on the order (see handle_refunded()) — permanently disqualifies
+		// every ticket on this order from ever being silently reactivated
+		// by an unrelated later status transition (e.g. a fraud-review
+		// hold-and-release that has nothing to do with the refund). Only
+		// a genuine whole-order cancelled/failed state, with zero money
+		// ever refunded, is eligible for reactivation on reinstatement.
+		$has_been_refunded = (float) $order->get_total_refunded() > 0.0;
+
 		foreach ( $order->get_items() as $item_id => $item ) {
 			if ( ! method_exists( $item, 'get_product_id' ) ) {
 				continue;
@@ -328,14 +345,18 @@ final class Ticket_Fulfillment {
 
 			if ( $this->tickets->exists_for_order_item( (int) $item_id ) ) {
 				// Tickets already exist for this item. Reactivate any that a
-				// previous cancellation/refund cancelled — e.g. a failed order
-				// later reinstated to processing — instead of silently doing
-				// nothing and leaving them stuck cancelled.
-				$reactivated = $this->tickets->reactivate_tickets_for_order_item( (int) $item_id );
+				// previous whole-order cancellation/failure cancelled — e.g.
+				// a failed order later reinstated to processing — instead of
+				// silently doing nothing and leaving them stuck cancelled.
+				// Never attempted once the order has any refund history; see
+				// $has_been_refunded above.
+				if ( ! $has_been_refunded ) {
+					$reactivated = $this->tickets->reactivate_tickets_for_order_item( (int) $item_id );
 
-				if ( ! empty( $reactivated ) ) {
-					$affected_types[ $ticket_type_id ] = true;
-					$this->restore_guests( $reactivated );
+					if ( ! empty( $reactivated ) ) {
+						$affected_types[ $ticket_type_id ] = true;
+						$this->restore_guests( $reactivated );
+					}
 				}
 
 				continue;

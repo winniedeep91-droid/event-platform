@@ -2266,3 +2266,73 @@ export const financeApi = {
   exportExpenses: (eventId: number, format: "csv" | "json" | "pdf") =>
     `${config().restUrl}exports/event_expenses/${format}?event_id=${eventId}&_wpnonce=${config().nonce}`,
 };
+
+// ── Analytics ────────────────────────────────────────────────────────────
+
+export interface EventComparisonRow {
+  event_id: number;
+  title: string;
+  starts_at: string;
+  status: string;
+  capacity: number | null;
+  tickets_sold: number;
+  checked_in: number;
+  sell_through: number | null;
+  revenue: number;
+  orders: number;
+  average_order_value: number;
+  new_customers: number;
+  returning_customers: number;
+  // Present only when the response's financialsIncluded flag is true — see
+  // Analytics_Controller: omitted server-side, not merely hidden by the UI,
+  // for a user without eventos_view_finance.
+  currency?: string;
+  net_profit?: number;
+  profit_margin?: number | null;
+  total_expenses?: number;
+  total_fees?: number;
+}
+
+export interface EventComparisonParams {
+  search?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  orderby?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  per_page?: number;
+}
+
+export interface EventComparisonResult extends Collection<EventComparisonRow> {
+  financialsIncluded: boolean;
+}
+
+export interface EventInsightsPayload {
+  unique_customers: number;
+  new_customers: number;
+  returning_customers: number;
+  unmatched_customers: number;
+  new_customer_definition: string;
+}
+
+export const analyticsApi = {
+  eventComparison: async (params: EventComparisonParams = {}): Promise<EventComparisonResult> => {
+    const body = await request<Envelope<EventComparisonRow[]>>(
+      `analytics/event-comparison${query({ ...params })}`,
+    );
+    const meta = body.meta ?? {};
+
+    return {
+      items: Array.isArray(body.data) ? body.data : [],
+      total: metaNumber(meta, "total", 0),
+      page: metaNumber(meta, "page", 1),
+      perPage: metaNumber(meta, "per_page", 25),
+      totalPages: metaNumber(meta, "total_pages", 1),
+      financialsIncluded: meta.financials_included === true,
+    };
+  },
+  eventInsights: (eventId: number) => unwrap<EventInsightsPayload>(`events/${eventId}/insights`),
+  exportComparison: (format: "csv" | "json" | "pdf") =>
+    `${config().restUrl}exports/event_comparison/${format}?_wpnonce=${config().nonce}`,
+};

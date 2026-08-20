@@ -33,6 +33,7 @@ import {
 } from "./views/woocommerce";
 import { PeopleListView, PersonProfileView, SegmentsView, InsightsView } from "./views/crm";
 import { FinanceOverviewView } from "./views/finance";
+import { AnalyticsOverviewView } from "./views/analytics";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { Drawer } from "./ui";
@@ -127,6 +128,10 @@ export function AdminApp({ view }: { view: string }) {
     // ── Finance module ─────────────────────────────────────────────────────
   } else if (view === "finance/overview") {
     content = <FinanceOverviewView />;
+
+    // ── Analytics module ───────────────────────────────────────────────────
+  } else if (view === "analytics/overview") {
+    content = <AnalyticsOverviewView />;
 
     // ── Settings ────────────────────────────────────────────────────────────
   } else if (view === "settings/team") {

@@ -11,6 +11,7 @@ namespace EventOS;
 
 use EventOS\Admin\Admin_Assets;
 use EventOS\Admin\Admin_Menu;
+use EventOS\Modules\Analytics_Module;
 use EventOS\Modules\Core_Module;
 use EventOS\Modules\Crm_Module;
 use EventOS\Modules\Events_Module;
@@ -118,6 +119,7 @@ final class Plugin {
 		$this->modules->add( new Woocommerce_Module() );
 		$this->modules->add( new Crm_Module() );
 		$this->modules->add( new Finance_Module() );
+		$this->modules->add( new Analytics_Module() );
 
 		/**
 		 * Filter the list of EventOS modules before they are initialised.

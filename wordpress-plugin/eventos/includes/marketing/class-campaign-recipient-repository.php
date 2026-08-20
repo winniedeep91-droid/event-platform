@@ -228,6 +228,37 @@ final class Campaign_Recipient_Repository {
 	}
 
 	/**
+	 * Terminally mark an already-claimed recipient as unsubscribed instead
+	 * of sending to them — used when {@see \EventOS\Marketing\Campaign_Send_Service::process_batch()}
+	 * finds marketing consent was revoked after {@see \EventOS\Marketing\Campaign_Send_Service::prepare()}
+	 * snapshotted this row as `pending`. Only ever called on a row this
+	 * same request already won via {@see claim_for_sending()}, so no
+	 * separate compare-and-swap is needed here — two workers can never
+	 * both reach this call for the same row. A terminal status, like
+	 * `sent`/`failed`: the row is not picked up by {@see next_pending()}
+	 * again, and `attempts` is left untouched since this was never a
+	 * delivery attempt.
+	 *
+	 * @param int $id Recipient row ID.
+	 * @return void
+	 */
+	public function mark_unsubscribed( int $id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			Marketing_Schema::campaign_recipients(),
+			array(
+				'status'     => 'unsubscribed',
+				'updated_at' => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
 	 * Persist an unsubscribe token's hash — called at send time, right
 	 * before the raw token (never stored) is embedded in that one e-mail's
 	 * unsubscribe link. See {@see Campaign_Send_Service::process_batch()}.

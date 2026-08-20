@@ -407,6 +407,20 @@ final class Campaign_Send_Service {
 				continue;
 			}
 
+			// Audience membership stays frozen at prepare() time (see class
+			// docblock) — but consent is a separate, live compliance check
+			// that must still hold at the moment of send, not just at
+			// prepare time. A row only ever reached 'pending' because
+			// has_active() was true when prepare() ran, which also means
+			// was_ever_granted() is already guaranteed true — so if consent
+			// is no longer active here, the only correct outcome is
+			// 'unsubscribed', the same status prepare() itself would have
+			// assigned had the revocation happened a moment earlier.
+			if ( ! $this->consent->has_active( (int) $row['person_id'], self::CONSENT_CHANNEL ) ) {
+				$this->recipients->mark_unsubscribed( (int) $row['id'] );
+				continue;
+			}
+
 			$ticket_summary = null !== $campaign ? $this->ticket_summary( (int) $row['person_id'], (int) $campaign['event_id'] ) : null;
 			$context        = Personalization_Renderer::build_context( $person, $campaign, $event, $ticket_summary );
 

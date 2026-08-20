@@ -218,13 +218,84 @@ final class Ticket_Fulfillment {
 	}
 
 	/**
+	 * Restore the Guest records linked to a set of newly-reactivated
+	 * tickets — the counterpart to {@see propagate_cancellation()}'s Guest
+	 * update, for the reverse transition (an order that was
+	 * cancelled/failed and refunded is later reinstated to
+	 * processing/completed). Only ever touches the guest belonging to a
+	 * ticket that was actually reactivated, never every guest on the order.
+	 *
+	 * A no-op when nothing was actually reactivated — the caller only ever
+	 * passes rows from {@see Ticket_Repository::reactivate_tickets_for_order_item()},
+	 * which already guards on `status = 'cancelled'`, so an already-active
+	 * ticket (or a repeat hook firing) reaches here with an empty array.
+	 * No separate CRM action needs firing here: the caller already adds
+	 * this ticket type to `$affected_types`, which fires
+	 * `eventos_ticket_order_fulfilled` at the end of `fulfil_order()` —
+	 * the same hook a first-time purchase fires — so the purchaser's
+	 * cached spend/ticket counts are recomputed from live WooCommerce data
+	 * exactly as they would be for a new purchase.
+	 *
+	 * @param array<int, array<string, mixed>> $reactivated Newly-reactivated ticket rows (each carrying `guest_id`).
+	 * @return void
+	 */
+	private function restore_guests( array $reactivated ): void {
+		foreach ( $reactivated as $ticket ) {
+			$guest_id = (int) ( $ticket['guest_id'] ?? 0 );
+
+			if ( $guest_id > 0 ) {
+				$this->guests->set_status( $guest_id, 'confirmed' );
+			}
+		}
+	}
+
+	/**
 	 * Issue tickets and guests for every ticket-type line item on an order
 	 * that has not already been fulfilled.
+	 *
+	 * Wrapped in a MySQL named lock scoped to this exact order: two
+	 * genuinely concurrent requests processing the same order (e.g. a
+	 * payment gateway firing two near-simultaneous webhook deliveries)
+	 * could otherwise both pass {@see Ticket_Repository::exists_for_order_item()}
+	 * before either has inserted, issuing duplicate tickets/guests for the
+	 * same order item. A per-row unique constraint on `wc_order_item_id`
+	 * is not a safe fix here — the schema and live data both confirm a
+	 * single order item legitimately backs more than one ticket
+	 * (quantity > 1 line items loop `issue()` once per unit, all sharing
+	 * one `wc_order_item_id`), and every complimentary ticket shares
+	 * `wc_order_item_id = 0` by design. A lock scoped to the order,
+	 * covering the whole check-then-issue sequence, is the smallest
+	 * correct fix: the second concurrent call simply waits, then finds
+	 * every item already fulfilled via the same `exists_for_order_item()`
+	 * check that already makes sequential re-fires safe.
 	 *
 	 * @param int $order_id Order ID.
 	 * @return void
 	 */
 	private function fulfil_order( int $order_id ): void {
+		if ( ! $this->acquire_fulfilment_lock( $order_id ) ) {
+			// Another request already holds the lock for this exact order
+			// and will complete the work itself; proceeding unprotected
+			// here is exactly the race this lock exists to prevent, so the
+			// safest action is to do nothing and let that request finish.
+			return;
+		}
+
+		try {
+			$this->fulfil_order_locked( $order_id );
+		} finally {
+			$this->release_fulfilment_lock( $order_id );
+		}
+	}
+
+	/**
+	 * The actual fulfilment logic, only ever run while
+	 * {@see fulfil_order()} holds this order's lock.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return void
+	 */
+	private function fulfil_order_locked( int $order_id ): void {
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order instanceof WC_Order ) {
@@ -260,8 +331,11 @@ final class Ticket_Fulfillment {
 				// previous cancellation/refund cancelled — e.g. a failed order
 				// later reinstated to processing — instead of silently doing
 				// nothing and leaving them stuck cancelled.
-				if ( $this->tickets->reactivate_for_order_item( (int) $item_id ) > 0 ) {
+				$reactivated = $this->tickets->reactivate_tickets_for_order_item( (int) $item_id );
+
+				if ( ! empty( $reactivated ) ) {
 					$affected_types[ $ticket_type_id ] = true;
+					$this->restore_guests( $reactivated );
 				}
 
 				continue;
@@ -335,6 +409,51 @@ final class Ticket_Fulfillment {
 			 */
 			do_action( 'eventos_ticket_order_fulfilled', $order_id, $customer_id, $email, $name, $phone );
 		}
+	}
+
+	/**
+	 * Acquire a MySQL named lock scoped to one order's fulfilment.
+	 *
+	 * `GET_LOCK()` is session-scoped: the same PHP request's `$wpdb`
+	 * connection can safely re-enter it, while a genuinely concurrent
+	 * request on a separate connection blocks until the first releases it
+	 * (or the timeout elapses). A 10 second timeout is generous relative to
+	 * how fast fulfilment actually runs; a timeout is treated as "another
+	 * request is still working on it", not as permission to proceed
+	 * unprotected.
+	 *
+	 * @param int $order_id WooCommerce order ID.
+	 * @return bool Whether the lock was acquired.
+	 */
+	private function acquire_fulfilment_lock( int $order_id ): bool {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', self::fulfilment_lock_name( $order_id ), 10 ) );
+	}
+
+	/**
+	 * Release the lock {@see acquire_fulfilment_lock()} took.
+	 *
+	 * @param int $order_id WooCommerce order ID.
+	 * @return void
+	 */
+	private function release_fulfilment_lock( int $order_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::fulfilment_lock_name( $order_id ) ) );
+	}
+
+	/**
+	 * The `GET_LOCK()` name for one order — well under MySQL's 64
+	 * character limit for any realistic order ID.
+	 *
+	 * @param int $order_id WooCommerce order ID.
+	 * @return string
+	 */
+	private static function fulfilment_lock_name( int $order_id ): string {
+		return 'eventos_fulfil_order_' . $order_id;
 	}
 
 	/**

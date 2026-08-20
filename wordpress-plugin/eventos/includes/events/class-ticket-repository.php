@@ -195,22 +195,70 @@ final class Ticket_Repository {
 	 * @return int Number of tickets reactivated.
 	 */
 	public function reactivate_for_order_item( int $wc_order_item_id ): int {
+		return count( $this->reactivate_tickets_for_order_item( $wc_order_item_id ) );
+	}
+
+	/**
+	 * Same as {@see reactivate_for_order_item()}, but returns the
+	 * reactivated rows instead of a bare count —
+	 * {@see \EventOS\Events\Ticket_Fulfillment} needs each row's `guest_id`
+	 * to restore the linked Guest, which a count can't carry.
+	 * `reactivate_for_order_item()` stays a thin wrapper so existing
+	 * callers/tests keep their int-returning contract. A single order item
+	 * can legitimately back more than one ticket (a quantity > 1 line
+	 * item), so this returns every row reactivated, not just one.
+	 *
+	 * @param int $wc_order_item_id WooCommerce order item ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function reactivate_tickets_for_order_item( int $wc_order_item_id ): array {
 		global $wpdb;
 
+		$table = Event_Schema::tickets();
+
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		return (int) $wpdb->update(
-			Event_Schema::tickets(),
-			array(
-				'status'     => 'active',
-				'updated_at' => current_time( 'mysql', true ),
-			),
-			array(
-				'wc_order_item_id' => $wc_order_item_id,
-				'status'           => 'cancelled',
-			),
-			array( '%s', '%s' ),
-			array( '%d', '%s' )
+		$ids = $wpdb->get_col(
+			$wpdb->prepare( "SELECT id FROM {$table} WHERE wc_order_item_id = %d AND status = 'cancelled'", $wc_order_item_id )
 		);
+
+		return $this->reactivate_by_ids( array_map( 'intval', $ids ) );
+	}
+
+	/**
+	 * Reactivate a specific, already-confirmed-cancelled set of tickets and
+	 * return the now-active rows. The shared primitive behind
+	 * {@see reactivate_tickets_for_order_item()} — it SELECTs the target
+	 * IDs with a `status = 'cancelled'` guard before calling this, which is
+	 * what makes repeating the same reactivation safe: a second call (or an
+	 * already-active ticket) finds no IDs left to select, so this receives
+	 * an empty array and does nothing — the same idempotency shape as
+	 * {@see cancel_by_ids()}.
+	 *
+	 * @param int[] $ids Ticket IDs.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function reactivate_by_ids( array $ids ): array {
+		global $wpdb;
+
+		if ( empty( $ids ) ) {
+			return array();
+		}
+
+		$table        = Event_Schema::tickets();
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'active', updated_at = %s WHERE id IN ({$placeholders})",
+				array_merge( array( current_time( 'mysql', true ) ), $ids )
+			)
+		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE id IN ({$placeholders})", $ids ), ARRAY_A );
+
+		return array_map( array( $this, 'hydrate' ), (array) $rows );
 	}
 
 	/**

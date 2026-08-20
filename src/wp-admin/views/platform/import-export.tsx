@@ -303,10 +303,19 @@ function ImportWizard({ onStarted }: { onStarted: () => void }) {
             <>
               <StatCard label="Valid rows" value={dryRunResult.skipped} />
               <StatCard label="Invalid rows" value={dryRunResult.failed} />
-              {(dryRunResult.new ?? 0) + (dryRunResult.existing ?? 0) > 0 ? (
+              {(dryRunResult.new ?? 0) +
+                (dryRunResult.existing ?? 0) +
+                (dryRunResult.duplicate ?? 0) >
+              0 ? (
                 <>
                   <StatCard label="New" value={dryRunResult.new ?? 0} />
                   <StatCard label="Existing (will be updated)" value={dryRunResult.existing ?? 0} />
+                  {(dryRunResult.duplicate ?? 0) > 0 ? (
+                    <StatCard
+                      label="Duplicates (within this file)"
+                      value={dryRunResult.duplicate ?? 0}
+                    />
+                  ) : null}
                 </>
               ) : null}
               {dryRunResult.errors.length > 0 ? (

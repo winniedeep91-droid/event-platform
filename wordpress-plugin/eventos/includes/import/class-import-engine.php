@@ -191,6 +191,9 @@ final class Import_Engine {
 			'imported'   => 0,
 			'skipped'    => 0,
 			'failed'     => 0,
+			'new'        => 0,
+			'existing'   => 0,
+			'duplicate'  => 0,
 			'errors'     => array(),
 			'created'    => array(),
 			'user_id'    => get_current_user_id(),
@@ -270,6 +273,13 @@ final class Import_Engine {
 		$run['imported']   = (int) $run['imported'] + (int) $result['imported'];
 		$run['skipped']    = (int) $run['skipped'] + (int) $result['skipped'];
 		$run['failed']     = (int) $run['failed'] + (int) $result['failed'];
+		// Only ever non-zero for targets that register a 'classifier' (see
+		// Abstract_Import_Provider::import()) — every other target's result
+		// simply omits these keys, and (int) of a missing key is 0, so this
+		// stays a harmless no-op accumulation for them.
+		$run['new']        = (int) ( $run['new'] ?? 0 ) + (int) ( $result['new'] ?? 0 );
+		$run['existing']   = (int) ( $run['existing'] ?? 0 ) + (int) ( $result['existing'] ?? 0 );
+		$run['duplicate']  = (int) ( $run['duplicate'] ?? 0 ) + (int) ( $result['duplicate'] ?? 0 );
 		$run['errors']     = array_slice( array_merge( (array) $run['errors'], (array) $result['errors'] ), 0, 100 );
 		$run['created']    = array_merge( (array) $run['created'], (array) $result['created'] );
 		$run['offset']     = (int) $run['offset'] + self::BATCH_SIZE;

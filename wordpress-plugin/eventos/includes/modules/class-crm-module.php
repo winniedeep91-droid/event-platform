@@ -469,18 +469,43 @@ final class Crm_Module extends Abstract_Module {
 
 					return $person_id;
 				},
-				// Preview-only: lets a dry-run report "new" vs "existing"
-				// without writing anything, mirroring the same e-mail lookup
-				// the real writer uses — see Abstract_Import_Provider::import()'s
-				// optional 'classifier' support. No deleter is registered
-				// (see the writer's docblock above): rollback cannot tell
-				// "created" apart from "updated an existing Person" from the
-				// writer's return value alone, and deleting could destroy a
-				// pre-existing CRM contact.
+				// Preview-only: lets a dry-run report "new" vs "existing" vs
+				// "duplicate" without writing anything, mirroring the same
+				// e-mail lookup the real writer uses — see
+				// Abstract_Import_Provider::import()'s optional 'classifier'
+				// support. No deleter is registered (see the writer's
+				// docblock above): rollback cannot tell "created" apart from
+				// "updated an existing Person" from the writer's return
+				// value alone, and deleting could destroy a pre-existing
+				// CRM contact.
+				//
+				// `$seen_in_batch` is a `static` local, so it persists across
+				// every row classified within one PHP request — i.e. one
+				// batch of BATCH_SIZE rows. A second row for the same e-mail
+				// later in the same batch is classified 'duplicate' rather
+				// than 'new', since the real writer will resolve it to the
+				// same Person, not create a second one. A duplicate landing
+				// in a *later* batch (a fresh request) is still classified
+				// correctly as 'existing' once the first batch has actually
+				// written it — this only narrows the "would show as new but
+				// isn't" gap within a single batch, it does not require a
+				// new persisted-state mechanism.
 				'classifier' => static function ( array $record ) use ( $persons ): string {
+					static $seen_in_batch = array();
+
 					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
 
-					return '' !== $email && null !== $persons->find_by_primary_email( $email ) ? 'existing' : 'new';
+					if ( '' === $email ) {
+						return 'new';
+					}
+
+					if ( isset( $seen_in_batch[ $email ] ) ) {
+						return 'duplicate';
+					}
+
+					$seen_in_batch[ $email ] = true;
+
+					return null !== $persons->find_by_primary_email( $email ) ? 'existing' : 'new';
 				},
 			)
 		);

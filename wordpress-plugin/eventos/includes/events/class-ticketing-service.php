@@ -297,6 +297,15 @@ final class Ticketing_Service {
 	/**
 	 * Check a guest in.
 	 *
+	 * Mirrors {@see validate_ticket()}'s cancelled-ticket guard: the Guest
+	 * List's manual "Check in" action is a second, independent path to the
+	 * same {@see Ticket_Repository::mark_checked_in()} admission primitive
+	 * the QR/code scanner uses, so it must enforce the same invariant — a
+	 * cancelled/refunded ticket is never admitted, regardless of which UI
+	 * control was used to attempt it. The React Guest List UI also avoids
+	 * offering this action for a cancelled guest, but that is a courtesy,
+	 * not the enforcement point: this check is what actually prevents it.
+	 *
 	 * @param int $event_id    Event ID.
 	 * @param int $guest_id    Guest ID.
 	 * @param int $operator_id Current user ID.
@@ -307,6 +316,27 @@ final class Ticketing_Service {
 
 		if ( is_wp_error( $guest ) ) {
 			return $guest;
+		}
+
+		$ticket = $this->tickets->find( (int) $guest['ticket_id'] );
+
+		if ( null === $ticket || 'cancelled' === $ticket['status'] ) {
+			$this->checkins->log(
+				array(
+					'event_id'      => $event_id,
+					'ticket_id'     => (int) $guest['ticket_id'],
+					'scanned_value' => (string) ( $ticket['ticket_number'] ?? '' ),
+					'outcome'       => 'cancelled',
+					'method'        => 'manual',
+					'operator_id'   => $operator_id,
+				)
+			);
+
+			return new WP_Error(
+				'eventos_ticket_cancelled',
+				__( 'This ticket was cancelled or refunded and cannot be checked in.', 'eventos' ),
+				array( 'status' => 422 )
+			);
 		}
 
 		$result = $this->tickets->mark_checked_in( (int) $guest['ticket_id'], $operator_id );

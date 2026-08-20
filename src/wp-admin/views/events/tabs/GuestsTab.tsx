@@ -150,11 +150,11 @@ function GuestDrawer({
             <Button loading={checkingIn} onClick={onUndoCheckin}>
               Undo check-in
             </Button>
-          ) : (
+          ) : guest.status !== "cancelled" ? (
             <Button variant="primary" loading={checkingIn} onClick={onCheckin}>
               Check in
             </Button>
-          )}
+          ) : null}
         </div>
       }
     >
@@ -418,7 +418,7 @@ export function GuestsTab({ eventId }: Props) {
             >
               Undo
             </Button>
-          ) : (
+          ) : row.status !== "cancelled" ? (
             <Button
               size="sm"
               variant="primary"
@@ -427,7 +427,7 @@ export function GuestsTab({ eventId }: Props) {
             >
               Check in
             </Button>
-          )}
+          ) : null}
         </div>
       ),
     },

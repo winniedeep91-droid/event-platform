@@ -75,7 +75,9 @@ final class Finance_Report_Builder {
 			}
 
 			++$paid_orders;
-			$ticket_revenue += (float) $order['total'];
+			// Pre-discount, ticket-line-items-only — see org_summary()'s
+			// matching use of get_subtotal() and this class's docblock.
+			$ticket_revenue += (float) $order['subtotal'];
 			$discounts      += (float) ( $order['discount_total'] ?? 0.0 );
 			$refunds        += array_sum( array_column( (array) $order['refunds'], 'amount' ) );
 
@@ -119,7 +121,12 @@ final class Finance_Report_Builder {
 		$fee_seen       = false;
 
 		foreach ( $orders as $order ) {
-			$ticket_revenue += (float) $order->get_total();
+			// Pre-discount, ticket-line-items-only — get_total() bakes in
+			// both the discount and any fee line items, which would make
+			// "ticket revenue" overstate fees and double-subtract discounts
+			// once "Discounts" and "Fees" are also deducted below. See
+			// build()'s matching use of the order_payload() 'subtotal' key.
+			$ticket_revenue += (float) $order->get_subtotal();
 			$discounts      += (float) $order->get_discount_total();
 
 			foreach ( $order->get_refunds() as $refund ) {

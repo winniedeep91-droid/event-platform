@@ -374,6 +374,61 @@ final class Campaign_Recipient_Repository {
 	}
 
 	/**
+	 * Every recipient row across every campaign for a CRM Person — the
+	 * lookup {@see \EventOS\Crm\Person_Privacy} needs to export or erase a
+	 * data-subject's campaign delivery history.
+	 *
+	 * @param int $person_id CRM Person ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function find_by_person( int $person_id ): array {
+		global $wpdb;
+
+		if ( $person_id <= 0 ) {
+			return array();
+		}
+
+		$table = Marketing_Schema::campaign_recipients();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE person_id = %d ORDER BY id DESC", $person_id ),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), (array) $rows );
+	}
+
+	/**
+	 * Redact the email address on a Person's campaign recipient rows,
+	 * leaving the delivery record itself (status, attempts, sent/failure
+	 * timestamps) intact — that history is the campaign's own send-audit
+	 * trail, not personal data once the address is gone. Used only by
+	 * {@see \EventOS\Crm\Person_Privacy}'s eraser.
+	 *
+	 * @param int $person_id CRM Person ID.
+	 * @return int Number of rows anonymized.
+	 */
+	public function anonymize_for_person( int $person_id ): int {
+		global $wpdb;
+
+		if ( $person_id <= 0 ) {
+			return 0;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE " . Marketing_Schema::campaign_recipients() . "
+				SET email = '', updated_at = %s
+				WHERE person_id = %d",
+				current_time( 'mysql', true ),
+				$person_id
+			)
+		);
+	}
+
+	/**
 	 * Shape a raw row for API output.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

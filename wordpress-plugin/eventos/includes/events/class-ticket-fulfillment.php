@@ -99,7 +99,8 @@ final class Ticket_Fulfillment {
 		if ( in_array( $to, array( 'processing', 'completed' ), true ) ) {
 			$this->fulfil_order( (int) $order_id );
 		} elseif ( in_array( $to, array( 'cancelled', 'failed' ), true ) ) {
-			$this->tickets->cancel_for_order( (int) $order_id );
+			$cancelled = $this->tickets->cancel_tickets_for_order( (int) $order_id );
+			$this->propagate_cancellation( (int) $order_id, $cancelled );
 			$this->refresh_stock_for_order( (int) $order_id );
 		}
 	}
@@ -123,7 +124,8 @@ final class Ticket_Fulfillment {
 	public function handle_refunded( $order_id, $refund_id ): void {
 		$order_id  = (int) $order_id;
 		$refund    = $refund_id ? wc_get_order( (int) $refund_id ) : false;
-		$cancelled = false;
+		$cancelled = array();
+		$itemized  = false;
 
 		if ( $refund instanceof WC_Order_Refund ) {
 			$items = $refund->get_items();
@@ -147,18 +149,72 @@ final class Ticket_Fulfillment {
 						continue;
 					}
 
-					$this->tickets->cancel_n_for_order_type( $order_id, $ticket_type_id, $quantity );
+					$cancelled = array_merge(
+						$cancelled,
+						$this->tickets->cancel_tickets_for_order_type( $order_id, $ticket_type_id, $quantity )
+					);
 				}
 
-				$cancelled = true;
+				$itemized = true;
 			}
 		}
 
-		if ( ! $cancelled ) {
-			$this->tickets->cancel_for_order( $order_id );
+		if ( ! $itemized ) {
+			$cancelled = $this->tickets->cancel_tickets_for_order( $order_id );
 		}
 
+		$this->propagate_cancellation( $order_id, $cancelled );
 		$this->refresh_stock_for_order( $order_id );
+	}
+
+	/**
+	 * Propagate a set of newly-cancelled tickets to their linked Guest
+	 * records and the purchaser's CRM Person metrics.
+	 *
+	 * A no-op when nothing was actually cancelled — which is exactly what
+	 * makes this safe to run more than once for the same refund/order
+	 * transition: {@see Ticket_Repository::cancel_by_ids()} only ever
+	 * cancels tickets it finds still `active`, so a repeat webhook for an
+	 * already-cancelled order reaches here with an empty `$cancelled` and
+	 * returns immediately — no duplicate Guest update, no repeat CRM
+	 * recompute.
+	 *
+	 * @param int                               $order_id  WooCommerce order ID.
+	 * @param array<int, array<string, mixed>>  $cancelled Newly-cancelled ticket rows (each carrying `guest_id`).
+	 * @return void
+	 */
+	private function propagate_cancellation( int $order_id, array $cancelled ): void {
+		if ( empty( $cancelled ) ) {
+			return;
+		}
+
+		foreach ( $cancelled as $ticket ) {
+			$guest_id = (int) ( $ticket['guest_id'] ?? 0 );
+
+			if ( $guest_id > 0 ) {
+				$this->guests->set_status( $guest_id, 'cancelled' );
+			}
+		}
+
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		/**
+		 * Fires after one or more EventOS tickets on an order were
+		 * cancelled — by a refund (partial or full) or by the order
+		 * moving to cancelled/failed. The counterpart to
+		 * eventos_ticket_order_fulfilled: CRM listens here to recompute
+		 * the purchaser's Person metrics so cached spend/ticket counts
+		 * stop counting a refunded/cancelled purchase as active.
+		 *
+		 * @param int    $order_id    WooCommerce order ID.
+		 * @param int    $customer_id WooCommerce customer ID, 0 for a guest checkout.
+		 * @param string $email       Billing email.
+		 */
+		do_action( 'eventos_ticket_order_cancelled', $order_id, (int) $order->get_customer_id(), (string) $order->get_billing_email() );
 	}
 
 	/**

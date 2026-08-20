@@ -75,6 +75,21 @@ final class Person_Note_Repository {
 	}
 
 	/**
+	 * Delete every note on a Person — free-text staff commentary is exactly
+	 * the kind of content a privacy erasure request must remove; see
+	 * {@see \EventOS\Crm\Person_Privacy}.
+	 *
+	 * @param int $person_id Person ID.
+	 * @return void
+	 */
+	public function delete_for_person( int $person_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->delete( Person_Schema::person_notes(), array( 'person_id' => $person_id ), array( '%d' ) );
+	}
+
+	/**
 	 * Read a single note.
 	 *
 	 * @param int $id Note ID.

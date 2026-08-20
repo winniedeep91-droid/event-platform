@@ -107,6 +107,70 @@ final class Guest_Repository {
 	}
 
 	/**
+	 * Every guest row across every event for an exact email address — the
+	 * lookup {@see \EventOS\Crm\Person_Privacy} needs, since a data-subject
+	 * request identifies a person by their exact address, not a search term.
+	 * Reuses {@see select()} the same way {@see search_all()} does, just
+	 * with an `=` match instead of `LIKE`. Unbounded: a privacy export or
+	 * erasure must cover every matching row, not one page of them.
+	 *
+	 * @param string $email Exact email address.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function find_by_email( string $email ): array {
+		$email = trim( $email );
+
+		if ( '' === $email ) {
+			return array();
+		}
+
+		return $this->select( 'g.email = %s', array( $email ), 10000, 0 );
+	}
+
+	/**
+	 * Anonymize every guest row for an exact email address — clears the
+	 * identifying contact fields plus any free-text tags/notes staff may
+	 * have attached, while leaving the row (and its ticket/order linkage,
+	 * financial history and attendance record) intact. Used only by
+	 * {@see \EventOS\Crm\Person_Privacy}'s eraser.
+	 *
+	 * @param string $email Exact email address.
+	 * @return int Number of guest rows anonymized.
+	 */
+	public function anonymize_for_email( string $email ): int {
+		global $wpdb;
+
+		$rows = $this->find_by_email( $email );
+
+		foreach ( $rows as $row ) {
+			$id = (int) $row['id'];
+
+			$this->update(
+				$id,
+				array(
+					'name'  => __( 'Redacted', 'eventos' ),
+					'email' => '',
+					'phone' => '',
+				)
+			);
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->update(
+				Event_Schema::guests(),
+				array(
+					'tags'  => wp_json_encode( array() ),
+					'notes' => wp_json_encode( array() ),
+				),
+				array( 'id' => $id ),
+				array( '%s', '%s' ),
+				array( '%d' )
+			);
+		}
+
+		return count( $rows );
+	}
+
+	/**
 	 * Search guests across every event by name/email/ticket number — the
 	 * cross-event counterpart to {@see query()}, which is scoped to one
 	 * event by design (a guest list always belongs to an event). Reuses the

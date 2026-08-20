@@ -45,6 +45,21 @@ final class Person_Tag_Repository {
 	}
 
 	/**
+	 * Delete every tag on a Person — tags are free text staff could use to
+	 * record something identifying (see class docblock), so a privacy
+	 * erasure request removes them; see {@see \EventOS\Crm\Person_Privacy}.
+	 *
+	 * @param int $person_id Person ID.
+	 * @return void
+	 */
+	public function delete_for_person( int $person_id ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->delete( Person_Schema::person_tags(), array( 'person_id' => $person_id ), array( '%d' ) );
+	}
+
+	/**
 	 * Attach a tag to a Person. Idempotent — re-attaching an already
 	 * present tag is a safe no-op, relying on the Phase 1
 	 * `UNIQUE KEY person_tag (person_id, tag)` as the final backstop.

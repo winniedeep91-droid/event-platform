@@ -201,13 +201,4 @@ final class Security {
 			)
 		);
 	}
-
-	/**
-	 * Whether two factor authentication is switched on for this installation.
-	 *
-	 * @return bool
-	 */
-	public static function two_factor_enabled(): bool {
-		return (bool) self::policy()['two_factor_enabled'];
-	}
 }

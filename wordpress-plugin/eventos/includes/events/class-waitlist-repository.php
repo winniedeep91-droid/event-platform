@@ -478,6 +478,63 @@ final class Waitlist_Repository {
 	}
 
 	/**
+	 * Every entry across every event for a CRM Person — the lookup
+	 * {@see \EventOS\Crm\Person_Privacy} needs to export or erase a
+	 * data-subject's waitlist history. `person_id` is the entry's real
+	 * identity anchor (unlike the denormalized `name`/`email`/`phone`
+	 * captured at join time), so this is an exact FK match, not a search.
+	 *
+	 * @param int $person_id CRM Person ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function find_by_person( int $person_id ): array {
+		global $wpdb;
+
+		if ( $person_id <= 0 ) {
+			return array();
+		}
+
+		$table = Event_Schema::waitlist_entries();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( "SELECT * FROM {$table} WHERE person_id = %d ORDER BY id DESC", $person_id ),
+			ARRAY_A
+		);
+
+		return array_map( array( $this, 'hydrate' ), (array) $rows );
+	}
+
+	/**
+	 * Redact the identifying contact fields captured on a Person's waitlist
+	 * entries, leaving the entry itself (status, position, ticket-type and
+	 * conversion linkage) intact — used only by
+	 * {@see \EventOS\Crm\Person_Privacy}'s eraser.
+	 *
+	 * @param int $person_id CRM Person ID.
+	 * @return int Number of entries anonymized.
+	 */
+	public function anonymize_for_person( int $person_id ): int {
+		global $wpdb;
+
+		if ( $person_id <= 0 ) {
+			return 0;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE " . Event_Schema::waitlist_entries() . "
+				SET name = %s, email = '', phone = '', updated_at = %s
+				WHERE person_id = %d",
+				__( 'Redacted', 'eventos' ),
+				current_time( 'mysql', true ),
+				$person_id
+			)
+		);
+	}
+
+	/**
 	 * Next position value for a new entry — monotonically increasing per
 	 * ticket type, never reused, never renumbered.
 	 *

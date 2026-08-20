@@ -17,6 +17,7 @@ use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
 use EventOS\Crm\Person_Metrics_Service;
 use EventOS\Crm\Person_Note_Repository;
+use EventOS\Crm\Person_Privacy;
 use EventOS\Crm\Person_Repository;
 use EventOS\Crm\Person_Resolver;
 use EventOS\Crm\Person_Schema;
@@ -203,10 +204,12 @@ final class Crm_Module extends Abstract_Module {
 		Person_Schema::maybe_install();
 
 		Person_Backfill_Service::init();
+		Person_Privacy::init();
 
 		add_action( 'eventos_register_rest_endpoints', array( $this, 'register_rest_endpoints' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 		add_action( 'eventos_ticket_order_fulfilled', array( $this, 'handle_ticket_order_fulfilled' ), 10, 5 );
+		add_action( 'eventos_ticket_order_cancelled', array( $this, 'handle_ticket_order_cancelled' ), 10, 3 );
 		add_action( 'eventos_register_exports', array( $this, 'register_exports' ) );
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
 		add_action( 'eventos_register_search_entities', array( $this, 'register_search_entities' ) );
@@ -299,6 +302,47 @@ final class Crm_Module extends Abstract_Module {
 				'name'           => $name,
 				'phone'          => $phone,
 				'source'         => 'ticket_fulfillment',
+				'source_id'      => (string) $order_id,
+			)
+		);
+
+		( new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() ) )->recompute( (int) $result['person']['id'] );
+	}
+
+	/**
+	 * Recompute the purchaser's Person metrics after one or more of their
+	 * EventOS tickets were cancelled — by a refund or by the order moving
+	 * to cancelled/failed. The counterpart to
+	 * {@see handle_ticket_order_fulfilled()}, fired from
+	 * {@see \EventOS\Events\Ticket_Fulfillment::propagate_cancellation()}.
+	 *
+	 * Uses the exact same find_or_create() resolution as the fulfilled-
+	 * order handler above. In practice this never actually creates a new
+	 * Person: this only fires after at least one ticket was cancelled,
+	 * which is only possible for an order that was already fulfilled —
+	 * meaning the Person this resolves to already exists. find_or_create()
+	 * is reused anyway so both handlers go through one identity-resolution
+	 * path, not two.
+	 *
+	 * @param int    $order_id    WooCommerce order ID.
+	 * @param int    $customer_id WooCommerce customer ID, 0 for a guest checkout.
+	 * @param string $email       Billing email.
+	 * @return void
+	 */
+	public function handle_ticket_order_cancelled( int $order_id, int $customer_id, string $email ): void {
+		if ( $customer_id <= 0 && '' === trim( $email ) ) {
+			return;
+		}
+
+		$resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+
+		$result = $resolver->find_or_create(
+			array(
+				'wc_customer_id' => $customer_id,
+				'email'          => $email,
+				'name'           => '',
+				'phone'          => '',
+				'source'         => 'ticket_cancelled',
 				'source_id'      => (string) $order_id,
 			)
 		);

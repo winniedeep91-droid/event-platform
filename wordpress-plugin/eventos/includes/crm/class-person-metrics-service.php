@@ -37,13 +37,18 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * - Live WooCommerce orders (`wc_get_orders()`) for total_spend,
  *   avg_order_value, avg_ticket_value and last_purchase_at. total_spend is
- *   the sum of `$order->get_total()` for every order — across every
- *   wc_customer_id AND every email identity the Person has, de-duplicated
- *   by order ID — in a paid status ('completed', 'processing', 'on-hold'),
- *   exactly the source of truth and status set
- *   {@see \EventOS\Rest\Woocommerce_Controller::customer_order_stats()}
- *   already established, generalized across every identity rather than one
- *   signal. avg_ticket_value = total_spend ÷ total_tickets_purchased is a
+ *   the sum, for every order in a paid status ('completed', 'processing',
+ *   'on-hold') across every wc_customer_id AND every email identity the
+ *   Person has (de-duplicated by order ID), of `$order->get_total()` minus
+ *   whatever that order's own `get_refunds()` records — a *partial* refund
+ *   leaves WooCommerce's order status unchanged (see
+ *   {@see \EventOS\Events\Ticket_Fulfillment::handle_refunded()}'s
+ *   docblock), so without netting out the refund a still-"completed" order
+ *   would keep counting its pre-refund total as active spend forever. The
+ *   paid-status set itself matches
+ *   {@see \EventOS\Rest\Woocommerce_Controller::customer_order_stats()}'s,
+ *   generalized across every identity rather than one signal.
+ *   avg_ticket_value = total_spend ÷ total_tickets_purchased is a
  *   documented APPROXIMATION, not an exact per-ticket price: no field
  *   anywhere in the schema records what was actually paid for one specific
  *   ticket (ticket_types.price is the list price, not the paid price after
@@ -277,7 +282,13 @@ final class Person_Metrics_Service {
 				continue;
 			}
 
-			$total_spend += (float) $order->get_total();
+			$refunded = 0.0;
+
+			foreach ( $order->get_refunds() as $refund ) {
+				$refunded += abs( (float) $refund->get_amount() );
+			}
+
+			$total_spend += max( 0.0, (float) $order->get_total() - $refunded );
 			++$order_count;
 
 			$created = $order->get_date_created();

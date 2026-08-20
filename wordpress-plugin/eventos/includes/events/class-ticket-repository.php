@@ -214,7 +214,7 @@ final class Ticket_Repository {
 	}
 
 	/**
-	 * Cancel every ticket issued for a WooCommerce order.
+	 * Cancel every active ticket issued for a WooCommerce order.
 	 *
 	 * Tickets that were already checked in keep their check-in record so the
 	 * door history stays accurate, but move to a cancelled status.
@@ -223,22 +223,30 @@ final class Ticket_Repository {
 	 * @return int Number of tickets cancelled.
 	 */
 	public function cancel_for_order( int $wc_order_id ): int {
+		return count( $this->cancel_tickets_for_order( $wc_order_id ) );
+	}
+
+	/**
+	 * Same as {@see cancel_for_order()}, but returns the cancelled rows
+	 * instead of a bare count — {@see \EventOS\Events\Ticket_Fulfillment}
+	 * needs each row's `guest_id` to propagate the cancellation, which a
+	 * count can't carry. `cancel_for_order()` stays a thin wrapper so
+	 * existing callers/tests keep their int-returning contract.
+	 *
+	 * @param int $wc_order_id WooCommerce order ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function cancel_tickets_for_order( int $wc_order_id ): array {
 		global $wpdb;
 
+		$table = Event_Schema::tickets();
+
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		return (int) $wpdb->update(
-			Event_Schema::tickets(),
-			array(
-				'status'     => 'cancelled',
-				'updated_at' => current_time( 'mysql', true ),
-			),
-			array(
-				'wc_order_id' => $wc_order_id,
-				'status'      => 'active',
-			),
-			array( '%s', '%s' ),
-			array( '%d', '%s' )
+		$ids = $wpdb->get_col(
+			$wpdb->prepare( "SELECT id FROM {$table} WHERE wc_order_id = %d AND status = 'active'", $wc_order_id )
 		);
+
+		return $this->cancel_by_ids( array_map( 'intval', $ids ) );
 	}
 
 	/**
@@ -252,6 +260,20 @@ final class Ticket_Repository {
 	 * @return int Number of tickets actually cancelled.
 	 */
 	public function cancel_n_for_order_type( int $wc_order_id, int $ticket_type_id, int $limit ): int {
+		return count( $this->cancel_tickets_for_order_type( $wc_order_id, $ticket_type_id, $limit ) );
+	}
+
+	/**
+	 * Same as {@see cancel_n_for_order_type()}, but returns the cancelled
+	 * rows instead of a bare count. See {@see cancel_tickets_for_order()}'s
+	 * docblock for why.
+	 *
+	 * @param int $wc_order_id    WooCommerce order ID.
+	 * @param int $ticket_type_id Ticket type ID.
+	 * @param int $limit          Maximum number of tickets to cancel.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function cancel_tickets_for_order_type( int $wc_order_id, int $ticket_type_id, int $limit ): array {
 		global $wpdb;
 
 		$table = Event_Schema::tickets();
@@ -266,19 +288,44 @@ final class Ticket_Repository {
 			)
 		);
 
+		return $this->cancel_by_ids( array_map( 'intval', $ids ) );
+	}
+
+	/**
+	 * Cancel a specific, already-confirmed-active set of tickets and
+	 * return the now-cancelled rows. The shared primitive behind
+	 * {@see cancel_tickets_for_order()} and
+	 * {@see cancel_tickets_for_order_type()} — both SELECT the target IDs
+	 * with a `status = 'active'` guard before calling this, which is what
+	 * makes repeating the same cancellation safe: a second call finds no
+	 * IDs left to select, so this receives an empty array and does
+	 * nothing.
+	 *
+	 * @param int[] $ids Ticket IDs.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function cancel_by_ids( array $ids ): array {
+		global $wpdb;
+
 		if ( empty( $ids ) ) {
-			return 0;
+			return array();
 		}
 
+		$table        = Event_Schema::tickets();
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-		return (int) $wpdb->query(
+		$wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET status = 'cancelled', updated_at = %s WHERE id IN ({$placeholders})",
-				array_merge( array( current_time( 'mysql', true ) ), array_map( 'intval', $ids ) )
+				array_merge( array( current_time( 'mysql', true ) ), $ids )
 			)
 		);
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE id IN ({$placeholders})", $ids ), ARRAY_A );
+
+		return array_map( array( $this, 'hydrate' ), (array) $rows );
 	}
 
 	/**

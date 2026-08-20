@@ -132,7 +132,6 @@ final class Settings {
 					'password_require_mixed'  => self::field( __( 'Require Upper And Lower Case', 'eventos' ), 'boolean', true ),
 					'password_require_number' => self::field( __( 'Require A Number', 'eventos' ), 'boolean', true ),
 					'password_require_symbol' => self::field( __( 'Require A Symbol', 'eventos' ), 'boolean', false ),
-					'two_factor_enabled'      => self::field( __( 'Enable Two Factor Authentication', 'eventos' ), 'boolean', false ),
 					'login_notifications'     => self::field( __( 'Login Notifications', 'eventos' ), 'boolean', true ),
 					'allowed_email_domains'   => self::field( __( 'Allowed Email Domains', 'eventos' ), 'list', array() ),
 				),

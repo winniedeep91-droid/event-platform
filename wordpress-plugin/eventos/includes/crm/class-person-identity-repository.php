@@ -67,6 +67,42 @@ final class Person_Identity_Repository {
 	}
 
 	/**
+	 * Delete identifying identity signals for a Person — the CRM half of
+	 * {@see \EventOS\Crm\Person_Privacy}'s privacy eraser.
+	 *
+	 * Deliberately scoped to `email`/`phone` by default: a `wc_customer_id`
+	 * identity is just an integer foreign key into WooCommerce's own user
+	 * table, not personal data in its own right, and removing it would
+	 * break the de-duplication this whole table exists for without
+	 * actually erasing anything a data-subject request is about — see
+	 * {@see Person_Privacy} for the full reasoning.
+	 *
+	 * @param int      $person_id Person ID.
+	 * @param string[] $types     Identity types to erase.
+	 * @return void
+	 */
+	public function erase_for_person( int $person_id, array $types = array( 'email', 'phone' ) ): void {
+		global $wpdb;
+
+		$types = array_values( array_filter( array_map( 'sanitize_key', $types ) ) );
+
+		if ( empty( $types ) ) {
+			return;
+		}
+
+		$table        = Person_Schema::person_identities();
+		$placeholders = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$table} WHERE person_id = %d AND type IN ({$placeholders})",
+				array_merge( array( $person_id ), $types )
+			)
+		);
+	}
+
+	/**
 	 * Attach an identity signal to a Person — idempotent and conflict-safe.
 	 *
 	 * Three possible outcomes:

@@ -519,6 +519,26 @@ final class Ticket_Type_Repository {
 	}
 
 	/**
+	 * Count of people currently waiting (not promoted/converted/expired/
+	 * cancelled) for this ticket type — a direct query rather than a
+	 * {@see Waitlist_Repository} dependency, mirroring {@see sold_count()}
+	 * right below.
+	 *
+	 * @param int $ticket_type_id Ticket type ID.
+	 * @return int
+	 */
+	private function waiting_count( int $ticket_type_id ): int {
+		global $wpdb;
+
+		$table = Event_Schema::waitlist_entries();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE ticket_type_id = %d AND status = 'waiting'", $ticket_type_id )
+		);
+	}
+
+	/**
 	 * Shape a raw row into the API contract, with computed sold/available figures.
 	 *
 	 * @param array<string, mixed> $row Raw database row.
@@ -548,7 +568,7 @@ final class Ticket_Type_Repository {
 			'min_per_order'    => (int) $row['min_per_order'],
 			'max_per_order'    => null === $row['max_per_order'] ? null : (int) $row['max_per_order'],
 			'waitlist_enabled' => (bool) $row['waitlist_enabled'],
-			'waitlist_count'   => 0,
+			'waitlist_count'   => $row['waitlist_enabled'] ? $this->waiting_count( (int) $row['id'] ) : 0,
 			'sort_order'       => (int) $row['position'],
 			'created_at'       => (string) $row['created_at'],
 			'updated_at'       => (string) $row['updated_at'],

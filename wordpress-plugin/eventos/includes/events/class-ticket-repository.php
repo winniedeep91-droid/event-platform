@@ -659,6 +659,36 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Whether an active ticket of this type already exists for a guest with
+	 * this email — used by the waitlist join flow to refuse a duplicate
+	 * queue entry for someone who already holds a valid ticket.
+	 *
+	 * @param int    $ticket_type_id Ticket type ID.
+	 * @param string $email          Guest email to match.
+	 * @return bool
+	 */
+	public function exists_active_for_type_and_email( int $ticket_type_id, string $email ): bool {
+		global $wpdb;
+
+		if ( '' === $email ) {
+			return false;
+		}
+
+		$tickets = Event_Schema::tickets();
+		$guests  = Event_Schema::guests();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$tickets} t INNER JOIN {$guests} g ON g.id = t.guest_id
+				WHERE t.ticket_type_id = %d AND t.status = 'active' AND g.email = %s",
+				$ticket_type_id,
+				$email
+			)
+		) > 0;
+	}
+
+	/**
 	 * Shape a raw row for internal consumers.
 	 *
 	 * @param array<string, mixed> $row Raw database row.

@@ -11,6 +11,7 @@ namespace EventOS\Rest;
 
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Ticketing_Service;
+use EventOS\Events\Waitlist_Service;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -33,12 +34,21 @@ final class Ticketing_Controller {
 	private Ticketing_Service $service;
 
 	/**
+	 * Waitlist service layer.
+	 *
+	 * @var Waitlist_Service
+	 */
+	private Waitlist_Service $waitlist;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param Ticketing_Service $service Service layer.
+	 * @param Ticketing_Service $service  Service layer.
+	 * @param Waitlist_Service  $waitlist Waitlist service layer.
 	 */
-	public function __construct( Ticketing_Service $service ) {
-		$this->service = $service;
+	public function __construct( Ticketing_Service $service, Waitlist_Service $waitlist ) {
+		$this->service  = $service;
+		$this->waitlist = $waitlist;
 	}
 
 	/**
@@ -215,6 +225,46 @@ final class Ticketing_Controller {
 				'capability' => $view,
 				'callback'   => array( $this, 'report' ),
 				'summary'    => __( 'Revenue, sales and attendance report for an event.', 'eventos' ),
+			),
+
+			// ── Waitlist ──────────────────────────────────────────────────
+			array(
+				'route'      => '/events/(?P<id>\d+)/waitlist',
+				'methods'    => 'GET',
+				'capability' => $view,
+				'callback'   => array( $this, 'waitlist' ),
+				'summary'    => __( 'List waitlist entries for an event.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/waitlist',
+				'methods'    => 'POST',
+				'capability' => $manage,
+				'callback'   => array( $this, 'join_waitlist' ),
+				'log_action' => 'waitlist_joined',
+				'summary'    => __( 'Add a person to a ticket type\'s waitlist.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/waitlist/(?P<entry_id>\d+)/cancel',
+				'methods'    => 'POST',
+				'capability' => $manage,
+				'callback'   => array( $this, 'cancel_waitlist_entry' ),
+				'log_action' => 'waitlist_cancelled',
+				'summary'    => __( 'Cancel a waitlist entry.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/waitlist/(?P<entry_id>\d+)/promote',
+				'methods'    => 'POST',
+				'capability' => $manage,
+				'callback'   => array( $this, 'promote_waitlist_entry' ),
+				'log_action' => 'waitlist_promoted',
+				'summary'    => __( 'Manually promote a specific waitlist entry.', 'eventos' ),
+			),
+			array(
+				'route'      => '/events/(?P<id>\d+)/waitlist/process',
+				'methods'    => 'POST',
+				'capability' => $manage,
+				'callback'   => array( $this, 'process_waitlist' ),
+				'summary'    => __( 'Re-check a ticket type\'s waitlist against current availability.', 'eventos' ),
 			),
 		);
 	}
@@ -512,6 +562,73 @@ final class Ticketing_Controller {
 	 */
 	public function report( WP_REST_Request $request ): array {
 		return $this->service->report( (int) $request->get_param( 'id' ) );
+	}
+
+	/* --------------------------------------------------------------------- */
+	/* Waitlist                                                               */
+	/* --------------------------------------------------------------------- */
+
+	/**
+	 * List waitlist entries.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function waitlist( WP_REST_Request $request ): WP_REST_Response {
+		$result = $this->waitlist->list_entries(
+			(int) $request->get_param( 'id' ),
+			array(
+				'ticket_type_id' => (int) $request->get_param( 'ticket_type_id' ),
+				'status'         => (string) $request->get_param( 'status' ),
+				'search'         => (string) $request->get_param( 'search' ),
+				'page'           => (int) ( $request->get_param( 'page' ) ?: 1 ),
+				'per_page'       => (int) ( $request->get_param( 'per_page' ) ?: 20 ),
+			)
+		);
+
+		return Rest_Response::collection( $result['items'], $result['total'], $result['page'], $result['per_page'] );
+	}
+
+	/**
+	 * Add a person to a ticket type's waitlist.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function join_waitlist( WP_REST_Request $request ) {
+		return $this->waitlist->join( (int) $request->get_param( 'id' ), $this->payload( $request ) );
+	}
+
+	/**
+	 * Cancel a waitlist entry.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function cancel_waitlist_entry( WP_REST_Request $request ) {
+		return $this->waitlist->cancel( (int) $request->get_param( 'id' ), (int) $request->get_param( 'entry_id' ) );
+	}
+
+	/**
+	 * Manually promote a specific waitlist entry.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return mixed
+	 */
+	public function promote_waitlist_entry( WP_REST_Request $request ) {
+		return $this->waitlist->promote_now( (int) $request->get_param( 'id' ), (int) $request->get_param( 'entry_id' ) );
+	}
+
+	/**
+	 * Re-check a ticket type's waitlist against current availability.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return array<string, mixed>
+	 */
+	public function process_waitlist( WP_REST_Request $request ): array {
+		$payload = $this->payload( $request );
+
+		return $this->waitlist->process_ticket_type( (int) ( $payload['ticket_type_id'] ?? 0 ) );
 	}
 
 	/* --------------------------------------------------------------------- */

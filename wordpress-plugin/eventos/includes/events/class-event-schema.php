@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.3.0';
+	public const VERSION = '1.4.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -173,6 +173,15 @@ final class Event_Schema {
 	 */
 	public static function promo_links(): string {
 		return self::table( 'promo_links' );
+	}
+
+	/**
+	 * Waitlist entries table.
+	 *
+	 * @return string
+	 */
+	public static function waitlist_entries(): string {
+		return self::table( 'waitlist_entries' );
 	}
 
 	/**
@@ -500,6 +509,39 @@ final class Event_Schema {
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
 			KEY event_id (event_id)
+		) {$collate};";
+
+		$waitlist_entries = self::waitlist_entries();
+
+		// `active_slot` is 1 while a row is 'waiting' or 'promoted', and NULL
+		// once it reaches a terminal state (converted/expired/cancelled).
+		// InnoDB unique indexes treat every NULL as distinct, so the
+		// `active_entry` key below allows unlimited historical (terminal)
+		// rows per person/ticket-type but blocks a second concurrently
+		// active one at the database level, not just in application code.
+		$schema[] = "CREATE TABLE {$waitlist_entries} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			ticket_type_id BIGINT UNSIGNED NOT NULL,
+			person_id BIGINT UNSIGNED NOT NULL,
+			name VARCHAR(191) NOT NULL DEFAULT '',
+			email VARCHAR(191) NOT NULL DEFAULT '',
+			phone VARCHAR(50) NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'waiting',
+			active_slot TINYINT UNSIGNED NULL,
+			position INT UNSIGNED NOT NULL DEFAULT 0,
+			promoted_at DATETIME NULL,
+			expires_at DATETIME NULL,
+			notified_at DATETIME NULL,
+			converted_ticket_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			metadata TEXT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY active_entry (event_id, ticket_type_id, person_id, active_slot),
+			KEY ticket_type_status (ticket_type_id, status),
+			KEY person_id (person_id),
+			KEY status_expires (status, expires_at)
 		) {$collate};";
 
 		foreach ( $schema as $statement ) {

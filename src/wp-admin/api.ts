@@ -540,6 +540,44 @@ export interface ComplimentaryPayload {
   note?: string;
 }
 
+// ── Waitlist types ───────────────────────────────────────────────────────
+
+export type WaitlistStatus = "waiting" | "promoted" | "converted" | "expired" | "cancelled";
+
+export interface WaitlistEntryRecord {
+  id: number;
+  event_id: number;
+  ticket_type_id: number;
+  person_id: number;
+  name: string;
+  email: string;
+  phone: string;
+  status: WaitlistStatus;
+  position: number;
+  queue_position: number | null;
+  promoted_at: string | null;
+  expires_at: string | null;
+  notified_at: string | null;
+  converted_ticket_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WaitlistListParams {
+  ticket_type_id?: number;
+  status?: string;
+  search?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface WaitlistJoinPayload {
+  ticket_type_id: number;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
 // ── Order types ───────────────────────────────────────────────────────────
 
 export type OrderStatus =
@@ -971,6 +1009,28 @@ export const eventsApi = {
     unwrap<{ issued: number; ticket_ids: number[] }>(`events/${eventId}/complimentary`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+
+  // ── Waitlist ──────────────────────────────────────────────────────────
+  waitlist: (eventId: number, params: WaitlistListParams) =>
+    unwrapCollection<WaitlistEntryRecord>(`events/${eventId}/waitlist${query({ ...params })}`),
+  joinWaitlist: (eventId: number, payload: WaitlistJoinPayload) =>
+    unwrap<WaitlistEntryRecord>(`events/${eventId}/waitlist`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  cancelWaitlistEntry: (eventId: number, entryId: number) =>
+    unwrap<WaitlistEntryRecord>(`events/${eventId}/waitlist/${entryId}/cancel`, {
+      method: "POST",
+    }),
+  promoteWaitlistEntry: (eventId: number, entryId: number) =>
+    unwrap<WaitlistEntryRecord>(`events/${eventId}/waitlist/${entryId}/promote`, {
+      method: "POST",
+    }),
+  processWaitlist: (eventId: number, ticketTypeId: number) =>
+    unwrap<{ promoted: number[] }>(`events/${eventId}/waitlist/process`, {
+      method: "POST",
+      body: JSON.stringify({ ticket_type_id: ticketTypeId }),
     }),
 
   // ── Orders ────────────────────────────────────────────────────────────

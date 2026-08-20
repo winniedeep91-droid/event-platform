@@ -46,16 +46,25 @@ final class Ticket_Fulfillment {
 	private Guest_Repository $guests;
 
 	/**
+	 * Waitlist service.
+	 *
+	 * @var Waitlist_Service
+	 */
+	private Waitlist_Service $waitlist;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Ticket_Type_Repository $ticket_types Ticket type repository.
 	 * @param Ticket_Repository      $tickets      Ticket repository.
 	 * @param Guest_Repository       $guests       Guest repository.
+	 * @param Waitlist_Service       $waitlist     Waitlist service.
 	 */
-	public function __construct( Ticket_Type_Repository $ticket_types, Ticket_Repository $tickets, Guest_Repository $guests ) {
+	public function __construct( Ticket_Type_Repository $ticket_types, Ticket_Repository $tickets, Guest_Repository $guests, Waitlist_Service $waitlist ) {
 		$this->ticket_types = $ticket_types;
 		$this->tickets      = $tickets;
 		$this->guests       = $guests;
+		$this->waitlist     = $waitlist;
 	}
 
 	/**
@@ -234,6 +243,12 @@ final class Ticket_Fulfillment {
 				);
 
 				$this->tickets->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+
+				// A no-op for the overwhelming majority of purchases, which
+				// never touched the waitlist — only marks an entry
+				// converted when this exact ticket type/email was actually
+				// promoted.
+				$this->waitlist->mark_converted_if_promoted( $ticket_type_id, $email, (int) $ticket['id'] );
 			}
 
 			$affected_types[ $ticket_type_id ] = true;
@@ -282,6 +297,12 @@ final class Ticket_Fulfillment {
 
 		foreach ( (array) $type_ids as $type_id ) {
 			$this->ticket_types->refresh_stock( (int) $type_id );
+
+			// A cancellation or refund is the only path that reaches here,
+			// and both are real capacity becoming available again — queue a
+			// waitlist pass rather than processing synchronously inside this
+			// WooCommerce hook.
+			$this->waitlist->queue_processing( (int) $type_id );
 		}
 	}
 

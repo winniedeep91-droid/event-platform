@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Events;
 
 use EventOS\Activity_Log;
+use EventOS\Job_Queue;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -105,6 +106,15 @@ final class Ticketing_Service {
 
 		if ( ! is_wp_error( $result ) ) {
 			$this->log( 'ticket_type_updated', $event_id, 'ticket_type', (string) $id, $before, $result );
+
+			// Capacity increasing (or an unlimited/unset capacity being
+			// bounded upward) is itself a way inventory becomes available,
+			// same as a cancellation or refund — give the waitlist a pass.
+			// A no-op capacity change (or a decrease) still dispatches, but
+			// {@see Waitlist_Service::process_ticket_type()} finds nothing
+			// to promote, so this stays safe to call unconditionally rather
+			// than trying to detect "did capacity actually increase" here.
+			Job_Queue::dispatch( Waitlist_Service::JOB_PROCESS, array( 'ticket_type_id' => $id ) );
 		}
 
 		return $result;

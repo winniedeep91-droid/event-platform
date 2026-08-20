@@ -29,6 +29,8 @@ import {
   type TicketTier,
   type TicketTypeRecord,
   type TicketVisibility,
+  type WaitlistEntryRecord,
+  type WaitlistStatus,
 } from "../../../api";
 import { errorMessage, formatDateTime, toLocalInput, fromLocalInput } from "../shared";
 
@@ -349,12 +351,182 @@ function ComplimentaryModal({
   );
 }
 
+const WAITLIST_STATUS_TONE: Record<
+  WaitlistStatus,
+  "success" | "warning" | "neutral" | "danger" | "info"
+> = {
+  waiting: "info",
+  promoted: "warning",
+  converted: "success",
+  expired: "neutral",
+  cancelled: "neutral",
+};
+
+function WaitlistDrawer({
+  eventId,
+  ticketType,
+  onClose,
+}: {
+  eventId: number;
+  ticketType: TicketTypeRecord;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const qc = useQueryClient();
+
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ["eventos", "waitlist", eventId, ticketType.id] });
+    void qc.invalidateQueries({ queryKey: ["eventos", "ticket-types", eventId] });
+  };
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["eventos", "waitlist", eventId, ticketType.id],
+    queryFn: () => eventsApi.waitlist(eventId, { ticket_type_id: ticketType.id, per_page: 100 }),
+  });
+
+  const process = useMutation({
+    mutationFn: () => eventsApi.processWaitlist(eventId, ticketType.id),
+    onSuccess: (res) => {
+      toast.success(
+        res.promoted.length > 0
+          ? `${res.promoted.length} ${res.promoted.length === 1 ? "person" : "people"} promoted.`
+          : "No one was eligible for promotion right now.",
+        "Checked",
+      );
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Check failed"),
+  });
+
+  const cancelEntry = useMutation({
+    mutationFn: (entryId: number) => eventsApi.cancelWaitlistEntry(eventId, entryId),
+    onSuccess: () => {
+      toast.success("Waitlist entry cancelled.", "Cancelled");
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Cancel failed"),
+  });
+
+  const promoteEntry = useMutation({
+    mutationFn: (entryId: number) => eventsApi.promoteWaitlistEntry(eventId, entryId),
+    onSuccess: () => {
+      toast.success("Entry promoted — a purchase notification was sent.", "Promoted");
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(errorMessage(err), "Promotion failed"),
+  });
+
+  const entries = data?.items ?? [];
+
+  const columns: DataTableColumn<WaitlistEntryRecord>[] = [
+    {
+      key: "queue_position",
+      header: "#",
+      cell: (row) => (row.queue_position != null ? `#${row.queue_position}` : "—"),
+    },
+    {
+      key: "name",
+      header: "Person",
+      cell: (row) => (
+        <Stack>
+          <strong>{row.name}</strong>
+          <span className="eos-page__description">{row.email}</span>
+        </Stack>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (row) => <Badge tone={WAITLIST_STATUS_TONE[row.status]}>{row.status}</Badge>,
+    },
+    {
+      key: "created_at",
+      header: "Joined",
+      cell: (row) => formatDateTime(row.created_at),
+    },
+    {
+      key: "expires_at",
+      header: "Promotion window",
+      cell: (row) =>
+        row.expires_at ? (
+          <span className="eos-page__description">Until {formatDateTime(row.expires_at)}</span>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "id",
+      header: "",
+      cell: (row) => (
+        <div className="eos-inline">
+          {"waiting" === row.status && (
+            <Button
+              size="sm"
+              loading={promoteEntry.isPending}
+              onClick={() => promoteEntry.mutate(row.id)}
+            >
+              Promote now
+            </Button>
+          )}
+          {("waiting" === row.status || "promoted" === row.status) && (
+            <Button
+              size="sm"
+              variant="danger"
+              loading={cancelEntry.isPending}
+              onClick={() => cancelEntry.mutate(row.id)}
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Waitlist: ${ticketType.name}`}
+      description="People who joined the waiting list for this ticket type, first joined first eligible."
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          <Button variant="primary" loading={process.isPending} onClick={() => process.mutate()}>
+            Re-check availability
+          </Button>
+        </>
+      }
+    >
+      <Stack>
+        {isLoading ? (
+          <LoadingState label="Loading waitlist…" />
+        ) : error ? (
+          <Alert tone="danger" title="Could not load the waitlist">
+            {errorMessage(error)}
+          </Alert>
+        ) : (
+          <DataTable
+            caption={`Waitlist for ${ticketType.name}`}
+            columns={columns}
+            rows={entries}
+            getRowId={(row) => String(row.id)}
+            emptyTitle="No one is waiting"
+            emptyDescription="Entries appear here once this ticket type sells out and people join the waiting list."
+          />
+        )}
+      </Stack>
+    </Drawer>
+  );
+}
+
 export function TicketingTab({ eventId }: Props) {
   const toast = useToast();
   const qc = useQueryClient();
   const [drawerTarget, setDrawerTarget] = useState<TicketTypeRecord | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<TicketTypeRecord | null>(null);
   const [showComp, setShowComp] = useState(false);
+  const [waitlistTarget, setWaitlistTarget] = useState<TicketTypeRecord | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["eventos", "ticket-types", eventId],
@@ -457,7 +629,16 @@ export function TicketingTab({ eventId }: Props) {
       header: "Waitlist",
       cell: (row) =>
         row.waitlist_enabled ? (
-          <Badge tone={row.waitlist_count > 0 ? "warning" : "neutral"}>{row.waitlist_count}</Badge>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setWaitlistTarget(row)}
+            aria-label={`View waitlist for ${row.name}`}
+          >
+            <Badge tone={row.waitlist_count > 0 ? "warning" : "neutral"}>
+              {row.waitlist_count}
+            </Badge>
+          </Button>
         ) : (
           <span className="eos-page__description">Off</span>
         ),
@@ -564,6 +745,15 @@ export function TicketingTab({ eventId }: Props) {
           eventId={eventId}
           ticketTypes={ticketTypes}
           onClose={() => setShowComp(false)}
+        />
+      )}
+
+      {/* Waitlist drawer */}
+      {waitlistTarget && (
+        <WaitlistDrawer
+          eventId={eventId}
+          ticketType={waitlistTarget}
+          onClose={() => setWaitlistTarget(null)}
         />
       )}
 

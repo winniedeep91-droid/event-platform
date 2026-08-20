@@ -27,6 +27,8 @@ use EventOS\Events\Ticket_Order_Resolver;
 use EventOS\Events\Ticket_Repository;
 use EventOS\Events\Ticket_Type_Repository;
 use EventOS\Events\Ticketing_Service;
+use EventOS\Events\Waitlist_Repository;
+use EventOS\Events\Waitlist_Service;
 use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
 use EventOS\Crm\Person_Repository;
@@ -86,6 +88,13 @@ final class Events_Module extends Abstract_Module {
 	 * @var Campaign_Send_Service|null
 	 */
 	private ?Campaign_Send_Service $campaign_send_service = null;
+
+	/**
+	 * Waitlist orchestration layer.
+	 *
+	 * @var Waitlist_Service|null
+	 */
+	private ?Waitlist_Service $waitlist_service = null;
 
 	/**
 	 * Module slug.
@@ -158,6 +167,23 @@ final class Events_Module extends Abstract_Module {
 		}
 
 		return $this->ticketing_service;
+	}
+
+	/**
+	 * Waitlist service accessor.
+	 *
+	 * @return Waitlist_Service
+	 */
+	public function waitlist_service(): Waitlist_Service {
+		if ( null === $this->waitlist_service ) {
+			$this->waitlist_service = new Waitlist_Service(
+				new Waitlist_Repository(),
+				$this->ticketing_service()->ticket_types(),
+				new Ticket_Repository()
+			);
+		}
+
+		return $this->waitlist_service;
 	}
 
 	/**
@@ -330,7 +356,7 @@ final class Events_Module extends Abstract_Module {
 		add_action( 'eventos_register_import_providers', array( $this, 'register_import_targets' ) );
 		add_filter( 'eventos_admin_pages', array( $this, 'register_admin_pages' ) );
 
-		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository() ) )->bootstrap();
+		( new Ticket_Fulfillment( new Ticket_Type_Repository(), new Ticket_Repository(), new Guest_Repository(), $this->waitlist_service() ) )->bootstrap();
 
 		// Registered directly here, not via the `eventos_register_jobs`
 		// hook: that hook fires from inside Core_Module::init(), which has
@@ -338,6 +364,7 @@ final class Events_Module extends Abstract_Module {
 		// reaches its own init() — see Person_Backfill_Service's docblock
 		// for the identical gotcha with Crm_Module.
 		$this->campaign_send_service()->register_job_handler();
+		$this->waitlist_service()->register_job_handlers();
 	}
 
 	/**
@@ -368,7 +395,7 @@ final class Events_Module extends Abstract_Module {
 
 		Rest_Registry::register_many( $controller->endpoints(), $this->slug() );
 
-		$ticketing = new Ticketing_Controller( $this->ticketing_service() );
+		$ticketing = new Ticketing_Controller( $this->ticketing_service(), $this->waitlist_service() );
 
 		Rest_Registry::register_many( $ticketing->endpoints(), $this->slug() );
 

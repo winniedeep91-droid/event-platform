@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.4.0';
+	public const VERSION = '1.5.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -182,6 +182,16 @@ final class Event_Schema {
 	 */
 	public static function waitlist_entries(): string {
 		return self::table( 'waitlist_entries' );
+	}
+
+	/**
+	 * External/source identity signals (a WooCommerce product-group key, a
+	 * Quicket event ID, ...) resolving to an Event.
+	 *
+	 * @return string
+	 */
+	public static function event_identities(): string {
+		return self::table( 'event_identities' );
 	}
 
 	/**
@@ -542,6 +552,24 @@ final class Event_Schema {
 			KEY ticket_type_status (ticket_type_id, status),
 			KEY person_id (person_id),
 			KEY status_expires (status, expires_at)
+		) {$collate};";
+
+		$event_identities = self::event_identities();
+
+		// Mirrors `eventos_person_identities` (CRM) — a type/value identity
+		// signal resolving to exactly one row, here an Event instead of a
+		// Person. No `confidence` column: unlike CRM signals, these are
+		// exact external-system identifiers (a WooCommerce product-group
+		// key, a Quicket event ID, ...), never fuzzy matches.
+		$schema[] = "CREATE TABLE {$event_identities} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			event_id BIGINT UNSIGNED NOT NULL,
+			type VARCHAR(30) NOT NULL,
+			value VARCHAR(191) NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY type_value (type, value),
+			KEY event_id (event_id)
 		) {$collate};";
 
 		foreach ( $schema as $statement ) {

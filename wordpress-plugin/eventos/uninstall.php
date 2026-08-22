@@ -149,6 +149,7 @@ $eventos_tables = array(
 	'eventos_campaigns',
 	'eventos_promo_links',
 	'eventos_waitlist_entries',
+	'eventos_event_identities',
 	// includes/crm/class-person-schema.php
 	'eventos_persons',
 	'eventos_person_identities',

@@ -177,9 +177,10 @@ final class Wc_Sync {
 	}
 
 	/**
-	 * Resolve every registered WooCommerce customer into a permanent CRM
-	 * Person (creating one if none exists yet, updating the match if one
-	 * does) and stamp the WordPress user as synced.
+	 * Resolve every WooCommerce customer — both registered accounts and
+	 * guest checkouts — into a permanent CRM Person (creating one if none
+	 * exists yet, updating the match if one does) and stamp the source
+	 * record as synced.
 	 *
 	 * Goes through the same {@see Person_Resolver::find_or_create()} path
 	 * every other purchaser-resolution call site uses — live ticket
@@ -190,6 +191,26 @@ final class Wc_Sync {
 	 * idempotent by construction (an existing `wc_customer_id`/email
 	 * identity resolves to its already-attached Person instead of a new
 	 * one), so re-running this sync never duplicates a Person or identity.
+	 *
+	 * Two passes, matching the two ways WooCommerce ever has a "customer":
+	 *
+	 * 1. Registered accounts — every WordPress user with the `customer`
+	 *    role, resolved by `wc_customer_id` + account email.
+	 * 2. Guest checkouts — WooCommerce lets an order complete with no
+	 *    account at all (`WC_Order::get_customer_id() === 0`); that
+	 *    purchaser has no WordPress user row for a `WP_User_Query` to
+	 *    ever find, so it is resolved from the order's own billing
+	 *    details instead — the exact same `get_billing_first_name()` /
+	 *    `get_billing_last_name()` / `get_billing_email()` /
+	 *    `get_billing_phone()` accessors
+	 *    {@see \EventOS\Events\Ticket_Fulfillment::fulfil_order_locked()}
+	 *    already uses for the identical case on a live purchase. An order
+	 *    with neither a customer_id nor a billing email has nothing to
+	 *    resolve against and is skipped, mirroring
+	 *    {@see \EventOS\Modules\Crm_Module::handle_ticket_order_fulfilled()}'s
+	 *    own guard. Repeat guest orders from the same email safely
+	 *    collapse onto one Person — `find_or_create()`'s own idempotency,
+	 *    not a deduplication step here.
 	 *
 	 * This previously only stamped `_eventos_synced_at` user meta — the
 	 * same lightweight pattern {@see sync_products()}/{@see sync_orders()}/
@@ -203,6 +224,13 @@ final class Wc_Sync {
 	public static function sync_customers(): array {
 		self::require_woocommerce();
 
+		$now      = current_time( 'mysql', true );
+		$resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+		$metrics  = new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() );
+		$total    = 0;
+		$failed   = 0;
+
+		// Pass 1: registered accounts.
 		$query = new WP_User_Query(
 			array(
 				'role'   => 'customer',
@@ -211,14 +239,10 @@ final class Wc_Sync {
 			)
 		);
 
-		$ids = $query->get_results();
-		$now = current_time( 'mysql', true );
+		$user_ids = $query->get_results();
+		$total   += count( $user_ids );
 
-		$resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
-		$metrics  = new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() );
-		$failed   = 0;
-
-		foreach ( $ids as $id ) {
+		foreach ( $user_ids as $id ) {
 			$user_id = (int) $id;
 			$signals = Person_Backfill_Service::wc_customer_signals( $user_id );
 
@@ -242,7 +266,48 @@ final class Wc_Sync {
 			}
 		}
 
-		$processed = count( $ids ) - $failed;
+		// Pass 2: guest checkouts — every order with no linked account.
+		$orders = wc_get_orders(
+			array(
+				'limit'  => -1,
+				'return' => 'objects',
+			)
+		);
+
+		foreach ( $orders as $order ) {
+			if ( ! $order instanceof WC_Order || (int) $order->get_customer_id() > 0 ) {
+				continue;
+			}
+
+			$email = (string) $order->get_billing_email();
+
+			if ( '' === $email ) {
+				continue;
+			}
+
+			++$total;
+
+			try {
+				$name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+
+				$result = $resolver->find_or_create(
+					array(
+						'wc_customer_id' => 0,
+						'email'          => $email,
+						'name'           => $name,
+						'phone'          => (string) $order->get_billing_phone(),
+						'source'         => 'wc_guest_customer_sync',
+						'source_id'      => (string) $order->get_id(),
+					)
+				);
+
+				$metrics->recompute( (int) $result['person']['id'] );
+			} catch ( \Throwable $error ) {
+				++$failed;
+			}
+		}
+
+		$processed = $total - $failed;
 
 		return array(
 			'processed' => $processed,

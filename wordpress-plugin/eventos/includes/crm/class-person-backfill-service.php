@@ -313,10 +313,15 @@ final class Person_Backfill_Service {
 	 * the same first_name/last_name-over-billing precedence
 	 * `Woocommerce_Controller::customer_payload()` already uses.
 	 *
+	 * Public: also reused by {@see \EventOS\Woocommerce\Wc_Sync::sync_customers()}
+	 * so the repeatable "Sync customers" admin action resolves WooCommerce
+	 * customers into Persons through this exact same signal extraction,
+	 * rather than a second implementation of it.
+	 *
 	 * @param int $user_id WordPress/WooCommerce user ID.
 	 * @return array{email: string, name: string, phone: string}
 	 */
-	private static function wc_customer_signals( int $user_id ): array {
+	public static function wc_customer_signals( int $user_id ): array {
 		$user  = get_userdata( $user_id );
 		$first = (string) get_user_meta( $user_id, 'first_name', true );
 		$last  = (string) get_user_meta( $user_id, 'last_name', true );

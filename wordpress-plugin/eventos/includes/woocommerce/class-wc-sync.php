@@ -9,6 +9,12 @@ declare( strict_types = 1 );
 
 namespace EventOS\Woocommerce;
 
+use EventOS\Crm\Person_Backfill_Service;
+use EventOS\Crm\Person_Identity_Repository;
+use EventOS\Crm\Person_Metrics_Service;
+use EventOS\Crm\Person_Repository;
+use EventOS\Crm\Person_Resolver;
+use EventOS\Crm\Person_Timeline_Service;
 use EventOS\Job_Queue;
 use EventOS\Platform\Sync_Registry;
 use EventOS\WooCommerce;
@@ -171,7 +177,26 @@ final class Wc_Sync {
 	}
 
 	/**
-	 * Stamp every WooCommerce customer as synced.
+	 * Resolve every registered WooCommerce customer into a permanent CRM
+	 * Person (creating one if none exists yet, updating the match if one
+	 * does) and stamp the WordPress user as synced.
+	 *
+	 * Goes through the same {@see Person_Resolver::find_or_create()} path
+	 * every other purchaser-resolution call site uses — live ticket
+	 * fulfilment ({@see \EventOS\Modules\Crm_Module::handle_ticket_order_fulfilled()})
+	 * and the one-time historical migration
+	 * ({@see Person_Backfill_Service::run_wc_customer_batch()}) — rather
+	 * than a second, parallel CRM mechanism. `find_or_create()` is
+	 * idempotent by construction (an existing `wc_customer_id`/email
+	 * identity resolves to its already-attached Person instead of a new
+	 * one), so re-running this sync never duplicates a Person or identity.
+	 *
+	 * This previously only stamped `_eventos_synced_at` user meta — the
+	 * same lightweight pattern {@see sync_products()}/{@see sync_orders()}/
+	 * {@see sync_coupons()} correctly use for annotating a WooCommerce
+	 * record WooCommerce itself still owns — but a WooCommerce *customer*
+	 * has no EventOS-owned counterpart to annotate; the actual "sync"
+	 * customers need is a resolved Person, which this was never doing.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -189,15 +214,41 @@ final class Wc_Sync {
 		$ids = $query->get_results();
 		$now = current_time( 'mysql', true );
 
+		$resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+		$metrics  = new Person_Metrics_Service( new Person_Repository(), new Person_Identity_Repository() );
+		$failed   = 0;
+
 		foreach ( $ids as $id ) {
-			update_user_meta( (int) $id, Wc_Meta::SYNCED_META, $now );
+			$user_id = (int) $id;
+			$signals = Person_Backfill_Service::wc_customer_signals( $user_id );
+
+			try {
+				$result = $resolver->find_or_create(
+					array(
+						'wc_customer_id' => $user_id,
+						'email'          => $signals['email'],
+						'name'           => $signals['name'],
+						'phone'          => $signals['phone'],
+						'source'         => 'wc_customer_sync',
+						'source_id'      => (string) $user_id,
+					)
+				);
+
+				$metrics->recompute( (int) $result['person']['id'] );
+
+				update_user_meta( $user_id, Wc_Meta::SYNCED_META, $now );
+			} catch ( \Throwable $error ) {
+				++$failed;
+			}
 		}
 
+		$processed = count( $ids ) - $failed;
+
 		return array(
-			'processed' => count( $ids ),
-			'failed'    => 0,
+			'processed' => $processed,
+			'failed'    => $failed,
 			/* translators: %d: number of customers. */
-			'message'   => sprintf( _n( 'Synced %d customer.', 'Synced %d customers.', count( $ids ), 'eventos' ), count( $ids ) ),
+			'message'   => sprintf( _n( 'Synced %d customer.', 'Synced %d customers.', $processed, 'eventos' ), $processed ),
 		);
 	}
 

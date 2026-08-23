@@ -1602,12 +1602,21 @@ final class Events_Module extends Abstract_Module {
 					$refunded_amount_raw = trim( (string) ( $record['refunded_amount'] ?? '' ) );
 
 					if ( '' !== $price_raw || '' !== $discount_raw || '' !== $fee_raw || '' !== $refunded_amount_raw ) {
+						// The 'money' transform accepts a leading '-' (a
+						// parenthesized/negative accounting convention some
+						// exports use), but every one of these fields is a
+						// magnitude in EventOS's own model — refunds are
+						// already always non-negative elsewhere (see
+						// Finance_Report_Builder), and a negative price/
+						// discount/fee has no meaning here. Normalize the
+						// sign away rather than let a source's negative
+						// convention silently invert a P&L figure.
 						$tickets->set_financials(
 							(int) $ticket['id'],
-							'' !== $price_raw ? (float) $price_raw : null,
-							'' !== $discount_raw ? (float) $discount_raw : null,
-							'' !== $fee_raw ? (float) $fee_raw : null,
-							'' !== $refunded_amount_raw ? (float) $refunded_amount_raw : null
+							'' !== $price_raw ? abs( (float) $price_raw ) : null,
+							'' !== $discount_raw ? abs( (float) $discount_raw ) : null,
+							'' !== $fee_raw ? abs( (float) $fee_raw ) : null,
+							'' !== $refunded_amount_raw ? abs( (float) $refunded_amount_raw ) : null
 						);
 					}
 

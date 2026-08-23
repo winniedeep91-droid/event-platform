@@ -11,6 +11,7 @@ namespace EventOS\Import;
 
 use EventOS\Activity_Log;
 use EventOS\Job_Queue;
+use Throwable;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -258,17 +259,35 @@ final class Import_Engine {
 			return new WP_Error( 'eventos_import_provider_missing', __( 'The import provider is no longer available.', 'eventos' ) );
 		}
 
-		$result = $provider->import(
-			(array) $run['source'],
-			(array) $run['mapping'],
-			array(
-				'run_id'  => $run['id'],
-				'entity'  => $run['entity'],
-				'dry_run' => (bool) $run['dry_run'],
-				'offset'  => (int) $run['offset'],
-				'limit'   => self::BATCH_SIZE,
-			)
-		);
+		// A row-level writer exception is already turned into a row failure
+		// inside Abstract_Import_Provider::import() — this is defense in
+		// depth for anything that could still throw outside that per-row
+		// loop (read_rows(), a target's classifier, ...). Without this, an
+		// uncaught exception here propagates out of handle_job() entirely,
+		// so save() below never runs, and the run record is left forever in
+		// 'running' — even though Job_Queue::run_job()'s own outer catch
+		// marks the underlying *job* failed. The run must fail the same way
+		// a WP_Error from the provider already does.
+		try {
+			$result = $provider->import(
+				(array) $run['source'],
+				(array) $run['mapping'],
+				array(
+					'run_id'  => $run['id'],
+					'entity'  => $run['entity'],
+					'dry_run' => (bool) $run['dry_run'],
+					'offset'  => (int) $run['offset'],
+					'limit'   => self::BATCH_SIZE,
+				)
+			);
+		} catch ( Throwable $exception ) {
+			$run['status']     = 'failed';
+			$run['errors'][]   = $exception->getMessage();
+			$run['updated_at'] = current_time( 'mysql', true );
+			self::save( $run );
+
+			return new WP_Error( 'eventos_import_batch_exception', $exception->getMessage() );
+		}
 
 		if ( is_wp_error( $result ) ) {
 			$run['status']     = 'failed';
@@ -357,6 +376,26 @@ final class Import_Engine {
 			);
 		}
 
+		// A run still 'running' has a batch job that may be mid-flight: that
+		// job's own read-modify-write of the full run record (see
+		// handle_job()) can otherwise race this one and resurrect the
+		// `created` list — and therefore the appearance that unrolled-back
+		// records still exist — right after this method just deleted them.
+		// Only a run that has stopped changing (completed or already
+		// failed) can be safely rolled back. 'pending'/'cancelled' never had
+		// anything written; 'rolled_back' has nothing left to undo.
+		if ( ! in_array( $run['status'], array( 'complete', 'failed' ), true ) ) {
+			return new WP_Error(
+				'eventos_import_rollback_not_allowed',
+				sprintf(
+					/* translators: %s: run status. */
+					__( 'This import cannot be rolled back while it is "%s".', 'eventos' ),
+					(string) $run['status']
+				),
+				array( 'status' => 409 )
+			);
+		}
+
 		$provider = Import_Registry::provider( (string) $run['provider'] );
 
 		if ( null === $provider ) {
@@ -366,6 +405,21 @@ final class Import_Engine {
 		$result = $provider->rollback( $run );
 
 		if ( is_wp_error( $result ) ) {
+			// The caller sees this WP_Error immediately, but without
+			// persisting it the run record itself goes on claiming to be
+			// merely 'complete' forever — import history would show no
+			// trace that a rollback was ever attempted, let alone that it
+			// was incomplete (e.g. People/Guests/Tickets have no deleter by
+			// design). Status is deliberately left as-is: nothing here
+			// claims a rollback happened that didn't.
+			$run['errors'][]   = sprintf(
+				/* translators: %s: rollback error message. */
+				__( 'Rollback incomplete: %s', 'eventos' ),
+				$result->get_error_message()
+			);
+			$run['updated_at'] = current_time( 'mysql', true );
+			self::save( $run );
+
 			return $result;
 		}
 

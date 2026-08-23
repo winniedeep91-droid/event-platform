@@ -62,7 +62,7 @@ final class Import_Controller {
 	 */
 	public static function preview( WP_REST_Request $request ) {
 		$source = (array) $request->get_param( 'source' );
-		$limit  = (int) $request->get_param( 'limit' ) ?: 10;
+		$limit  = min( 500, (int) $request->get_param( 'limit' ) ?: 10 );
 
 		return Import_Engine::preview( $source, $limit );
 	}

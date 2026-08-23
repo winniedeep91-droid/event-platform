@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace EventOS\Import;
 
+use Throwable;
 use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -255,7 +256,27 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 				continue;
 			}
 
-			$written = call_user_func( $target['writer'], $record, $context );
+			// A writer throwing (a DB constraint, a collision-retry
+			// exhaustion, an unexpected null) must never take down the whole
+			// batch/run — every other row in this batch, and every later
+			// batch, would otherwise be lost along with it, and the run
+			// record would never be marked failed (see
+			// Import_Engine::handle_job()'s own outer catch for the
+			// still-rarer case where a provider throws outside a single
+			// row). One bad row becomes exactly what a WP_Error from the
+			// writer already becomes: a row-level failure.
+			try {
+				$written = call_user_func( $target['writer'], $record, $context );
+			} catch ( Throwable $exception ) {
+				++$result['failed'];
+				$result['errors'][] = sprintf(
+					/* translators: 1: row number, 2: error message. */
+					__( 'Row %1$d: %2$s', 'eventos' ),
+					$offset + (int) $index + 1,
+					$exception->getMessage()
+				);
+				continue;
+			}
 
 			if ( is_wp_error( $written ) ) {
 				++$result['failed'];

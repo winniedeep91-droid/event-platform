@@ -314,8 +314,9 @@ final class Job_Queue {
 		);
 
 		foreach ( (array) $jobs as $job ) {
-			self::run_job( $job );
-			++$processed;
+			if ( self::run_job( $job ) ) {
+				++$processed;
+			}
 		}
 
 		delete_transient( self::LOCK );
@@ -327,9 +328,9 @@ final class Job_Queue {
 	 * Execute a single job row.
 	 *
 	 * @param array<string, mixed> $job Job row.
-	 * @return void
+	 * @return bool Whether this worker actually claimed and ran the job (false if another worker already claimed it first).
 	 */
-	private static function run_job( array $job ): void {
+	private static function run_job( array $job ): bool {
 		global $wpdb;
 
 		$table    = Installer::jobs_table();
@@ -338,23 +339,41 @@ final class Job_Queue {
 		$attempts = (int) $job['attempts'] + 1;
 		$payload  = (array) ( json_decode( (string) $job['payload'], true ) ?: array() );
 
+		// Claim the job with an atomic conditional UPDATE — the WHERE clause
+		// includes the status this row had when SELECTed, so only the worker
+		// whose UPDATE actually matches a still-'pending' row proceeds. Two
+		// overlapping run_due_jobs() calls (routine under WP-Cron's
+		// pseudo-cron model, and only loosely discouraged by the transient
+		// lock in run_due_jobs()) can both SELECT the same due row; without
+		// this guard both would also both execute the handler, double-
+		// processing the same import batch (or, for a bundle's last stage,
+		// double-firing the completion hook and dispatching the next stage
+		// twice). No new locking system — this is the job's own existing
+		// `status` column used as the mutual-exclusion mechanism.
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$wpdb->update(
+		$claimed = $wpdb->update(
 			$table,
 			array(
 				'status'     => self::STATUS_RUNNING,
 				'attempts'   => $attempts,
 				'started_at' => current_time( 'mysql', true ),
 			),
-			array( 'id' => $id ),
+			array(
+				'id'     => $id,
+				'status' => self::STATUS_PENDING,
+			),
 			array( '%s', '%d', '%s' ),
-			array( '%d' )
+			array( '%d', '%s' )
 		);
+
+		if ( ! $claimed ) {
+			return false;
+		}
 
 		if ( ! isset( self::$handlers[ $type ] ) ) {
 			self::fail( $id, $job, $attempts, sprintf( 'No handler registered for job type "%s".', $type ) );
 
-			return;
+			return true;
 		}
 
 		try {
@@ -393,6 +412,8 @@ final class Job_Queue {
 		} catch ( Throwable $exception ) {
 			self::fail( $id, $job, $attempts, $exception->getMessage() );
 		}
+
+		return true;
 	}
 
 	/**

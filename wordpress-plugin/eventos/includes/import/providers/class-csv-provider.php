@@ -235,10 +235,21 @@ final class Csv_Provider extends Abstract_Import_Provider {
 		}
 
 		$uploads = wp_get_upload_dir();
-		$path    = isset( $source['path'] ) ? wp_normalize_path( (string) $source['path'] ) : '';
-		$base    = wp_normalize_path( (string) $uploads['basedir'] );
+		$raw     = isset( $source['path'] ) ? (string) $source['path'] : '';
 
-		if ( '' === $path || 0 !== strpos( $path, $base ) || ! is_readable( $path ) ) {
+		// A string-prefix check on the unresolved path is not a containment
+		// check — wp_normalize_path() never collapses `..` segments, so
+		// "{base}/../../etc/passwd" would pass a prefix test while resolving
+		// outside uploads/ at the filesystem level. realpath() resolves both
+		// sides first (and returns false for anything that doesn't exist),
+		// so the comparison is against where the path actually points.
+		$real_base = realpath( wp_normalize_path( (string) $uploads['basedir'] ) );
+		$real_path = '' !== $raw ? realpath( wp_normalize_path( $raw ) ) : false;
+
+		if ( false === $real_base || false === $real_path
+			|| 0 !== strpos( $real_path . DIRECTORY_SEPARATOR, $real_base . DIRECTORY_SEPARATOR )
+			|| ! is_readable( $real_path )
+		) {
 			return new WP_Error(
 				'eventos_import_invalid_path',
 				__( 'CSV files must live inside the WordPress uploads directory.', 'eventos' ),
@@ -246,7 +257,7 @@ final class Csv_Provider extends Abstract_Import_Provider {
 			);
 		}
 
-		return $path;
+		return $real_path;
 	}
 
 	/**

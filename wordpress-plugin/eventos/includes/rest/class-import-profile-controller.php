@@ -98,7 +98,7 @@ final class Import_Profile_Controller {
 	 * @return mixed
 	 */
 	public static function preview( WP_REST_Request $request ) {
-		$limit = (int) $request->get_param( 'limit' ) ?: 10;
+		$limit = min( 500, (int) $request->get_param( 'limit' ) ?: 10 );
 
 		return Import_Registry::preview_profile_mapping(
 			(string) $request->get_param( 'id' ),

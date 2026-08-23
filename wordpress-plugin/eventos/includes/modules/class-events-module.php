@@ -16,10 +16,16 @@ use EventOS\Events\Checkin_Repository;
 use EventOS\Events\Event_Capabilities;
 use EventOS\Events\Event_Controller;
 use EventOS\Events\Event_Report_Builder;
+use EventOS\Events\Event_Identity_Repository;
+use EventOS\Events\Event_Identity_Resolver;
 use EventOS\Events\Event_Schema;
 use EventOS\Events\Event_Service;
 use EventOS\Events\Event_Status;
 use EventOS\Events\Guest_Repository;
+use EventOS\Events\Ticket_Identity_Repository;
+use EventOS\Events\Ticket_Identity_Resolver;
+use EventOS\Events\Ticket_Type_Identity_Repository;
+use EventOS\Events\Ticket_Type_Identity_Resolver;
 use EventOS\Events\Marketing_Service;
 use EventOS\Events\Promo_Link_Repository;
 use EventOS\Events\Ticket_Display;
@@ -33,6 +39,8 @@ use EventOS\Events\Waitlist_Service;
 use EventOS\Crm\Person_Consent_Repository;
 use EventOS\Crm\Person_Identity_Repository;
 use EventOS\Crm\Person_Repository;
+use EventOS\Crm\Person_Resolver;
+use EventOS\Crm\Person_Timeline_Service;
 use EventOS\Crm\Segment_Repository;
 use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Registry;
@@ -1134,7 +1142,8 @@ final class Events_Module extends Abstract_Module {
 	 * @return void
 	 */
 	public function register_import_targets(): void {
-		$service = $this->service();
+		$service        = $this->service();
+		$event_resolver = new Event_Identity_Resolver( $service, new Event_Identity_Repository() );
 
 		Import_Registry::register_target(
 			array(
@@ -1155,11 +1164,15 @@ final class Events_Module extends Abstract_Module {
 					'age_restriction'   => array( 'label' => __( 'Age restriction', 'eventos' ), 'aliases' => array( 'age' ) ),
 					'venue_name'        => array( 'label' => __( 'Venue', 'eventos' ), 'aliases' => array( 'location', 'venue' ) ),
 					'status'            => array( 'label' => __( 'Status', 'eventos' ), 'aliases' => array( 'state' ) ),
+					'source'            => array( 'label' => __( 'Source', 'eventos' ), 'aliases' => array( 'provider', 'platform' ) ),
+					'source_id'         => array( 'label' => __( 'Source event ID', 'eventos' ), 'aliases' => array( 'external_id', 'event_id', 'source_event_id' ) ),
 				),
-				'writer'     => static function ( array $record ) use ( $service ) {
+				'writer'     => static function ( array $record ) use ( $service, $event_resolver ) {
 					$venue_name = trim( (string) ( $record['venue_name'] ?? '' ) );
+					$source     = trim( (string) ( $record['source'] ?? '' ) );
+					$source_id  = trim( (string) ( $record['source_id'] ?? '' ) );
 
-					unset( $record['venue_name'] );
+					unset( $record['venue_name'], $record['source'], $record['source_id'] );
 
 					if ( '' !== $venue_name ) {
 						$existing = $service->venues()->query( array( 'search' => $venue_name, 'per_page' => 1 ) );
@@ -1173,6 +1186,18 @@ final class Events_Module extends Abstract_Module {
 								$record['venue_id'] = (int) $venue['id'];
 							}
 						}
+					}
+
+					// A source identity lets re-importing the same external
+					// event resolve to the Event already created for it
+					// instead of creating a duplicate. Without one (a plain
+					// CSV row with no source id), there is nothing to
+					// dedupe against, so this falls through to a plain
+					// create — unchanged from before.
+					if ( '' !== $source && '' !== $source_id ) {
+						$resolved = $event_resolver->resolve_or_create( $source, $source_id, $record );
+
+						return is_wp_error( $resolved ) ? $resolved : (int) $resolved['event']['id'];
 					}
 
 					$created = $service->create_event( $record );
@@ -1313,6 +1338,188 @@ final class Events_Module extends Abstract_Module {
 				// cases apart — deleting could destroy a guest record that
 				// existed before the import ran. Safer to report rollback as
 				// incomplete for these rows than to risk that.
+			)
+		);
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'ticket_types',
+				'label'      => __( 'Ticket types', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'event_source'    => array( 'label' => __( 'Event source', 'eventos' ), 'required' => true, 'aliases' => array( 'provider', 'platform' ) ),
+					'event_source_id' => array( 'label' => __( 'Source event ID', 'eventos' ), 'required' => true, 'aliases' => array( 'event_id', 'source_event_id' ) ),
+					'source'          => array( 'label' => __( 'Source', 'eventos' ) ),
+					'source_id'       => array( 'label' => __( 'Source ticket-type ID', 'eventos' ), 'required' => true, 'aliases' => array( 'external_id', 'ticket_type_id' ) ),
+					'name'            => array( 'label' => __( 'Name', 'eventos' ), 'required' => true, 'aliases' => array( 'ticket_type', 'tier_name' ) ),
+					'price'           => array( 'label' => __( 'Price', 'eventos' ), 'type' => 'number', 'aliases' => array( 'cost' ) ),
+					'capacity'        => array( 'label' => __( 'Capacity', 'eventos' ), 'type' => 'integer' ),
+				),
+				// Every provider's "did we already import this?" question is
+				// answered the same way at every stage of this cascade: an
+				// external identity, resolved through the same
+				// find-or-create shape {@see Event_Identity_Resolver} uses
+				// for events. A ticket type always belongs to an
+				// already-imported event, so the event's own identity is
+				// looked up first (never created here) and its row's
+				// `event_id` is what the ticket type attaches to.
+				'writer'     => static function ( array $record ) {
+					$event_source    = trim( (string) ( $record['event_source'] ?? '' ) );
+					$event_source_id = trim( (string) ( $record['event_source_id'] ?? '' ) );
+					$source          = trim( (string) ( $record['source'] ?? $event_source ) );
+					$source_id       = trim( (string) ( $record['source_id'] ?? '' ) );
+
+					if ( '' === $event_source || '' === $event_source_id ) {
+						return new WP_Error( 'eventos_import_event_not_found', __( 'A source event is required to import a ticket type.', 'eventos' ) );
+					}
+
+					$event_identity = ( new Event_Identity_Repository() )->find_by_type_value( $event_source, $event_source_id );
+
+					if ( null === $event_identity ) {
+						return new WP_Error( 'eventos_import_event_not_found', __( 'No event matches this source event ID — import the event first.', 'eventos' ) );
+					}
+
+					if ( '' === $source_id ) {
+						return new WP_Error( 'eventos_import_missing_field', __( 'A source ticket-type ID is required.', 'eventos' ) );
+					}
+
+					$resolver = new Ticket_Type_Identity_Resolver( new Ticket_Type_Repository(), new Ticket_Type_Identity_Repository() );
+
+					$resolved = $resolver->resolve_or_create(
+						$source,
+						$source_id,
+						(int) $event_identity['event_id'],
+						array(
+							'name'     => (string) ( $record['name'] ?? '' ),
+							'price'    => (float) ( $record['price'] ?? 0 ),
+							'capacity' => array_key_exists( 'capacity', $record ) && '' !== (string) $record['capacity'] ? (int) $record['capacity'] : null,
+						)
+					);
+
+					return is_wp_error( $resolved ) ? $resolved : (int) $resolved['ticket_type']['id'];
+				},
+			)
+		);
+
+		Import_Registry::register_target(
+			array(
+				'entity'     => 'tickets',
+				'label'      => __( 'Tickets', 'eventos' ),
+				'module'     => $this->slug(),
+				'capability' => Capabilities::RUN_IMPORTS,
+				'fields'     => array(
+					'event_source'          => array( 'label' => __( 'Event source', 'eventos' ), 'required' => true ),
+					'event_source_id'       => array( 'label' => __( 'Source event ID', 'eventos' ), 'required' => true ),
+					'ticket_type_source'    => array( 'label' => __( 'Ticket type source', 'eventos' ) ),
+					'ticket_type_source_id' => array( 'label' => __( 'Source ticket-type ID', 'eventos' ), 'required' => true ),
+					'source'                => array( 'label' => __( 'Source', 'eventos' ) ),
+					'source_id'             => array( 'label' => __( 'Source ticket ID', 'eventos' ), 'required' => true ),
+					'name'                  => array( 'label' => __( 'Attendee name', 'eventos' ), 'aliases' => array( 'guest_name', 'attendee' ) ),
+					'email'                 => array( 'label' => __( 'Attendee email', 'eventos' ), 'type' => 'email', 'aliases' => array( 'guest_email' ) ),
+					'phone'                 => array( 'label' => __( 'Attendee phone', 'eventos' ) ),
+				),
+				// A generic ticketing-platform "attendee" row: resolves its
+				// Event and Ticket Type by their own already-imported
+				// identities (never creates either here — import events,
+				// then ticket_types, then tickets, in that order), resolves
+				// or creates the Person through the exact same CRM identity
+				// path every other purchaser-resolution call site uses
+				// ({@see \EventOS\Crm\Person_Resolver::find_or_create()}),
+				// then issues the Ticket and its Guest. EventOS has no
+				// Order entity anywhere — WC_Order is the only "order" in
+				// this codebase — so an external order reference has
+				// nowhere to persist and is intentionally not stored;
+				// idempotency comes entirely from the ticket's own source
+				// identity via {@see Ticket_Identity_Resolver}.
+				'writer'     => static function ( array $record ) {
+					$event_source    = trim( (string) ( $record['event_source'] ?? '' ) );
+					$event_source_id = trim( (string) ( $record['event_source_id'] ?? '' ) );
+
+					if ( '' === $event_source || '' === $event_source_id ) {
+						return new WP_Error( 'eventos_import_event_not_found', __( 'A source event is required to import a ticket.', 'eventos' ) );
+					}
+
+					$event_identity = ( new Event_Identity_Repository() )->find_by_type_value( $event_source, $event_source_id );
+
+					if ( null === $event_identity ) {
+						return new WP_Error( 'eventos_import_event_not_found', __( 'No event matches this source event ID — import the event first.', 'eventos' ) );
+					}
+
+					$ticket_type_source    = trim( (string) ( $record['ticket_type_source'] ?? $event_source ) );
+					$ticket_type_source_id = trim( (string) ( $record['ticket_type_source_id'] ?? '' ) );
+
+					if ( '' === $ticket_type_source_id ) {
+						return new WP_Error( 'eventos_import_missing_field', __( 'A source ticket-type ID is required.', 'eventos' ) );
+					}
+
+					$ticket_type_identity = ( new Ticket_Type_Identity_Repository() )->find_by_type_value( $ticket_type_source, $ticket_type_source_id );
+
+					if ( null === $ticket_type_identity ) {
+						return new WP_Error( 'eventos_import_ticket_type_not_found', __( 'No ticket type matches this source ID — import ticket types first.', 'eventos' ) );
+					}
+
+					$source    = trim( (string) ( $record['source'] ?? $event_source ) );
+					$source_id = trim( (string) ( $record['source_id'] ?? '' ) );
+
+					if ( '' === $source_id ) {
+						return new WP_Error( 'eventos_import_missing_field', __( 'A source ticket ID is required.', 'eventos' ) );
+					}
+
+					$name  = trim( (string) ( $record['name'] ?? '' ) );
+					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
+					$phone = trim( (string) ( $record['phone'] ?? '' ) );
+
+					$person_resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
+
+					$person_resolver->find_or_create(
+						array(
+							'email'     => $email,
+							'name'      => $name,
+							'phone'     => $phone,
+							'source'    => $source,
+							'source_id' => $source_id,
+						)
+					);
+
+					$ticket_resolver = new Ticket_Identity_Resolver( new Ticket_Repository(), new Ticket_Identity_Repository() );
+
+					$resolved = $ticket_resolver->resolve_or_create(
+						$source,
+						$source_id,
+						array(
+							'event_id'         => (int) $event_identity['event_id'],
+							'ticket_type_id'   => (int) $ticket_type_identity['ticket_type_id'],
+							'wc_customer_id'   => 0,
+							'is_complimentary' => false,
+						)
+					);
+
+					if ( is_wp_error( $resolved ) ) {
+						return $resolved;
+					}
+
+					$ticket = $resolved['ticket'];
+
+					if ( $resolved['created'] ) {
+						$guests = new Guest_Repository();
+
+						$guest = $guests->create(
+							array(
+								'event_id'       => (int) $event_identity['event_id'],
+								'ticket_id'      => (int) $ticket['id'],
+								'wc_customer_id' => 0,
+								'name'           => $name,
+								'email'          => $email,
+								'phone'          => $phone,
+							)
+						);
+
+						( new Ticket_Repository() )->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+					}
+
+					return (int) $ticket['id'];
+				},
 			)
 		);
 

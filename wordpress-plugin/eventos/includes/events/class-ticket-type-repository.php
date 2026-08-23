@@ -149,6 +149,106 @@ final class Ticket_Type_Repository {
 	}
 
 	/**
+	 * Look up the ticket type linked to a WooCommerce product/variation.
+	 *
+	 * @param int $wc_product_id WooCommerce product or variation ID.
+	 * @return array<string, mixed>|null
+	 */
+	public function find_by_wc_product_id( int $wc_product_id ): ?array {
+		global $wpdb;
+
+		if ( $wc_product_id <= 0 ) {
+			return null;
+		}
+
+		$table = Event_Schema::ticket_types();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE wc_product_id = %d", $wc_product_id ) );
+
+		return $id ? $this->find( (int) $id ) : null;
+	}
+
+	/**
+	 * Attach a ticket type to a WooCommerce product/variation that already
+	 * exists — the reverse of {@see create()}: WooCommerce already owns the
+	 * sellable object (a variation under an auto-provisioned event's
+	 * variable product), so this skips {@see sync_wc_product()} entirely
+	 * rather than pushing a competing product back to WooCommerce.
+	 *
+	 * @param int                  $event_id      Event ID.
+	 * @param int                  $wc_product_id WooCommerce product/variation ID that already exists.
+	 * @param array<string, mixed> $input         Field values.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function attach_from_wc_variation( int $event_id, int $wc_product_id, array $input ) {
+		global $wpdb;
+
+		$data = $this->sanitize( $input, $event_id );
+
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		$now                   = current_time( 'mysql', true );
+		$data['created_at']    = $now;
+		$data['updated_at']    = $now;
+		$data['position']      = $this->next_position( $event_id );
+		$data['wc_product_id'] = $wc_product_id;
+
+		$formats = array();
+
+		foreach ( array_keys( $data ) as $column ) {
+			$formats[] = self::COLUMNS[ $column ] ?? '%s';
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->insert( Event_Schema::ticket_types(), $data, $formats );
+
+		return $this->find( (int) $wpdb->insert_id );
+	}
+
+	/**
+	 * Update a ticket type's EventOS-side fields from its WooCommerce
+	 * product/variation without re-syncing that product — the reverse of
+	 * {@see attach_from_wc_variation()}: WooCommerce already owns this
+	 * object, so this never calls {@see sync_wc_product()}.
+	 *
+	 * @param int                  $id    Ticket type ID.
+	 * @param array<string, mixed> $input Field values.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function update_from_wc_variation( int $id, array $input ) {
+		global $wpdb;
+
+		$existing = $this->find( $id );
+
+		if ( null === $existing ) {
+			return new WP_Error( 'eventos_not_found', __( 'That ticket type no longer exists.', 'eventos' ), array( 'status' => 404 ) );
+		}
+
+		$data = $this->sanitize( $input, (int) $existing['event_id'] );
+
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
+
+		unset( $data['event_id'] );
+		$data['updated_at'] = current_time( 'mysql', true );
+
+		$formats = array();
+
+		foreach ( array_keys( $data ) as $column ) {
+			$formats[] = self::COLUMNS[ $column ] ?? '%s';
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update( Event_Schema::ticket_types(), $data, array( 'id' => $id ), $formats, array( '%d' ) );
+
+		return $this->find( $id );
+	}
+
+	/**
 	 * Update a ticket type and re-sync its WooCommerce product.
 	 *
 	 * @param int                  $id    Ticket type ID.

@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace EventOS\Events;
 
+use EventOS\Woocommerce\Wc_Meta;
 use WC_Order;
 use WC_Order_Refund;
 
@@ -136,7 +137,7 @@ final class Ticket_Fulfillment {
 						continue;
 					}
 
-					$product_id = (int) $refund_item->get_product_id();
+					$product_id = Wc_Meta::resolve_purchased_product_id( $refund_item );
 					$quantity   = abs( method_exists( $refund_item, 'get_quantity' ) ? (int) $refund_item->get_quantity() : 0 );
 
 					if ( $product_id <= 0 || $quantity <= 0 ) {
@@ -331,7 +332,7 @@ final class Ticket_Fulfillment {
 				continue;
 			}
 
-			$product_id = (int) $item->get_product_id();
+			$product_id = Wc_Meta::resolve_purchased_product_id( $item );
 
 			if ( $product_id <= 0 ) {
 				continue;

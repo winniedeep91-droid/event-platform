@@ -92,4 +92,29 @@ final class Wc_Meta {
 
 		return (int) get_post_meta( $product_id, self::TICKET_TYPE_META, true );
 	}
+
+	/**
+	 * The product actually purchased on an order item/refund item — the
+	 * variation when the item is a variation, otherwise the (simple)
+	 * product. `get_product_id()` alone always returns the *parent*
+	 * product ID, which under-resolves every variation-based ticket type
+	 * (each variation is its own ticket type, linked via its own
+	 * `wc_product_id`) — use this wherever a line item needs to be matched
+	 * to the specific thing that was actually bought.
+	 *
+	 * @param mixed $item An order or refund line item (duck-typed: anything
+	 *                     exposing get_variation_id()/get_product_id()).
+	 * @return int
+	 */
+	public static function resolve_purchased_product_id( $item ): int {
+		if ( method_exists( $item, 'get_variation_id' ) ) {
+			$variation_id = (int) $item->get_variation_id();
+
+			if ( $variation_id > 0 ) {
+				return $variation_id;
+			}
+		}
+
+		return method_exists( $item, 'get_product_id' ) ? (int) $item->get_product_id() : 0;
+	}
 }

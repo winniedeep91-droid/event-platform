@@ -303,6 +303,18 @@ final class Import_Engine {
 					),
 				)
 			);
+
+			/**
+			 * Fires when an import run reaches 'complete'.
+			 *
+			 * {@see \EventOS\Import\Ticketing_Import_Orchestrator} listens for
+			 * this to chain a multi-stage bundle import (events -> ticket_types
+			 * -> tickets) — every other run simply has no listener match and
+			 * this is a harmless no-op for it.
+			 *
+			 * @param array<string, mixed> $run Completed run record.
+			 */
+			do_action( 'eventos_import_run_completed', $run );
 		}
 
 		return array(

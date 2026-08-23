@@ -80,6 +80,8 @@ $eventos_options = array(
 	'eventos_sync_history',
 	// includes/import/class-import-engine.php
 	'eventos_import_runs',
+	// includes/import/class-ticketing-import-orchestrator.php
+	'eventos_ticketing_import_bundles',
 );
 
 foreach ( $eventos_options as $eventos_option ) {
@@ -150,6 +152,8 @@ $eventos_tables = array(
 	'eventos_promo_links',
 	'eventos_waitlist_entries',
 	'eventos_event_identities',
+	'eventos_ticket_type_identities',
+	'eventos_ticket_identities',
 	// includes/crm/class-person-schema.php
 	'eventos_persons',
 	'eventos_person_identities',

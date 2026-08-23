@@ -99,7 +99,10 @@ final class Wc_Sync {
 	}
 
 	/**
-	 * Stamp every WooCommerce product as synced.
+	 * Stamp every WooCommerce product as synced, and auto-provision Events
+	 * and Ticket Types from every variable product — see
+	 * {@see Wc_Event_Provisioning} for the WooCommerce event model
+	 * (variable product = Event, variations = Ticket Types).
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -120,11 +123,23 @@ final class Wc_Sync {
 			update_post_meta( (int) $id, Wc_Meta::SYNCED_META, $now );
 		}
 
-		return array(
-			'processed' => count( $ids ),
-			'failed'    => 0,
-			/* translators: %d: number of products. */
-			'message'   => sprintf( _n( 'Synced %d product.', 'Synced %d products.', count( $ids ), 'eventos' ), count( $ids ) ),
+		$provisioning = Wc_Event_Provisioning::sync();
+
+		return array_merge(
+			$provisioning,
+			array(
+				'processed' => count( $ids ),
+				'failed'    => 0,
+				'message'   => sprintf(
+					/* translators: %1$d: number of products, %2$d: events created, %3$d: events matched, %4$d: ticket types created, %5$d: ticket types updated. */
+					__( 'Synced %1$d product(s). Events created: %2$d, matched: %3$d. Ticket types created: %4$d, updated: %5$d.', 'eventos' ),
+					count( $ids ),
+					$provisioning['events_created'],
+					$provisioning['events_matched'],
+					$provisioning['ticket_types_created'],
+					$provisioning['ticket_types_updated']
+				),
+			)
 		);
 	}
 

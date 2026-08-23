@@ -15,6 +15,7 @@ use EventOS\Cron;
 use EventOS\Export\Export_Registry;
 use EventOS\Import\Import_Engine;
 use EventOS\Import\Import_Registry;
+use EventOS\Import\Ticketing_Import_Orchestrator;
 use EventOS\Import\Providers\Csv_Provider;
 use EventOS\Import\Providers\Fixr_Provider;
 use EventOS\Import\Providers\Howler_Provider;
@@ -77,6 +78,7 @@ final class Core_Module extends Abstract_Module {
 		Cron::init();
 		Job_Queue::init();
 		Import_Engine::init();
+		Ticketing_Import_Orchestrator::init();
 		Rest_Registry::init();
 
 		// Deferred to the `init` hook rather than called synchronously here:

@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.5.0';
+	public const VERSION = '1.7.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -192,6 +192,30 @@ final class Event_Schema {
 	 */
 	public static function event_identities(): string {
 		return self::table( 'event_identities' );
+	}
+
+	/**
+	 * External/source identity signals (a Quicket ticket-type ID, ...)
+	 * resolving to a Ticket Type. WooCommerce-sourced ticket types keep
+	 * using `ticket_types.wc_product_id` directly — this table is only for
+	 * sources with no such native column.
+	 *
+	 * @return string
+	 */
+	public static function ticket_type_identities(): string {
+		return self::table( 'ticket_type_identities' );
+	}
+
+	/**
+	 * External/source identity signals (e.g. a Quicket ticket ID) resolving
+	 * to a Ticket. WooCommerce-sourced tickets keep using
+	 * `tickets.wc_order_item_id` directly (via `exists_for_order_item()`)
+	 * — this table is only for sources with no such native column.
+	 *
+	 * @return string
+	 */
+	public static function ticket_identities(): string {
+		return self::table( 'ticket_identities' );
 	}
 
 	/**
@@ -570,6 +594,36 @@ final class Event_Schema {
 			PRIMARY KEY  (id),
 			UNIQUE KEY type_value (type, value),
 			KEY event_id (event_id)
+		) {$collate};";
+
+		$ticket_type_identities = self::ticket_type_identities();
+
+		// Same identity pattern as `event_identities`, scoped to Ticket Types
+		// instead of Events — for non-WooCommerce import sources only.
+		$schema[] = "CREATE TABLE {$ticket_type_identities} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			ticket_type_id BIGINT UNSIGNED NOT NULL,
+			type VARCHAR(30) NOT NULL,
+			value VARCHAR(191) NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY type_value (type, value),
+			KEY ticket_type_id (ticket_type_id)
+		) {$collate};";
+
+		$ticket_identities = self::ticket_identities();
+
+		// Same identity pattern again, scoped to Tickets — for
+		// non-WooCommerce import sources only.
+		$schema[] = "CREATE TABLE {$ticket_identities} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			ticket_id BIGINT UNSIGNED NOT NULL,
+			type VARCHAR(30) NOT NULL,
+			value VARCHAR(191) NOT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY type_value (type, value),
+			KEY ticket_id (ticket_id)
 		) {$collate};";
 
 		foreach ( $schema as $statement ) {

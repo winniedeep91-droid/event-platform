@@ -11,6 +11,7 @@ declare( strict_types = 1 );
 namespace EventOS\Events;
 
 use EventOS\WooCommerce;
+use EventOS\Woocommerce\Wc_Meta;
 use WC_Order;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -195,7 +196,7 @@ final class Brand_Report_Builder {
 					continue;
 				}
 
-				$event_id = $product_map[ (int) $item->get_product_id() ] ?? null;
+				$event_id = $product_map[ Wc_Meta::resolve_purchased_product_id( $item ) ] ?? null;
 
 				if ( null !== $event_id && isset( $summary[ $event_id ] ) ) {
 					$summary[ $event_id ]['revenue'] += (float) $item->get_total();

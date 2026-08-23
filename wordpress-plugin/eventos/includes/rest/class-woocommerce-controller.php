@@ -783,9 +783,10 @@ final class Woocommerce_Controller {
 		$line_items = array();
 
 		foreach ( $order->get_items() as $item_id => $item ) {
-			$product_id = method_exists( $item, 'get_product_id' ) ? (int) $item->get_product_id() : 0;
-			$quantity   = method_exists( $item, 'get_quantity' ) ? (float) $item->get_quantity() : 1.0;
-			$total      = (float) $item->get_total();
+			$product_id   = method_exists( $item, 'get_product_id' ) ? (int) $item->get_product_id() : 0;
+			$purchased_id = Wc_Meta::resolve_purchased_product_id( $item );
+			$quantity     = method_exists( $item, 'get_quantity' ) ? (float) $item->get_quantity() : 1.0;
+			$total        = (float) $item->get_total();
 
 			$line_items[] = array(
 				'id'                 => (int) $item_id,
@@ -797,7 +798,7 @@ final class Woocommerce_Controller {
 				'subtotal'           => method_exists( $item, 'get_subtotal' ) ? (float) $item->get_subtotal() : $total,
 				'total'              => $total,
 				'tax'                => method_exists( $item, 'get_total_tax' ) ? (float) $item->get_total_tax() : 0.0,
-				'eos_ticket_type_id' => $product_id ? ( Wc_Meta::resolve_line_item_ticket_type( $product_id ) ?: null ) : null,
+				'eos_ticket_type_id' => $purchased_id ? ( Wc_Meta::resolve_line_item_ticket_type( $purchased_id ) ?: null ) : null,
 			);
 		}
 

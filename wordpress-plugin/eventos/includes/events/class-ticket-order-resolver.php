@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Events;
 
 use EventOS\WooCommerce;
+use EventOS\Woocommerce\Wc_Meta;
 use WC_Order;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -170,7 +171,7 @@ final class Ticket_Order_Resolver {
 			}
 
 			foreach ( $order->get_items() as $item ) {
-				if ( method_exists( $item, 'get_product_id' ) && isset( $product_map[ (int) $item->get_product_id() ] ) ) {
+				if ( method_exists( $item, 'get_product_id' ) && isset( $product_map[ Wc_Meta::resolve_purchased_product_id( $item ) ] ) ) {
 					// Keyed by order ID so an order spanning two events'
 					// products is still only counted once.
 					$matching[ $order->get_id() ] = $order;
@@ -213,7 +214,7 @@ final class Ticket_Order_Resolver {
 			}
 
 			foreach ( $order->get_items() as $item ) {
-				if ( method_exists( $item, 'get_product_id' ) && in_array( (int) $item->get_product_id(), $product_ids, true ) ) {
+				if ( method_exists( $item, 'get_product_id' ) && in_array( Wc_Meta::resolve_purchased_product_id( $item ), $product_ids, true ) ) {
 					$matching[] = $order;
 					break;
 				}
@@ -241,7 +242,7 @@ final class Ticket_Order_Resolver {
 				continue;
 			}
 
-			$product_id = (int) $item->get_product_id();
+			$product_id = Wc_Meta::resolve_purchased_product_id( $item );
 
 			if ( ! isset( $product_map[ $product_id ] ) ) {
 				continue;

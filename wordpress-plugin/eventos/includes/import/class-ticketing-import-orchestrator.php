@@ -38,7 +38,7 @@ final class Ticketing_Import_Orchestrator {
 
 	/**
 	 * Option holding in-progress bundle chains:
-	 * token => { stages: string[], sources: array<string, array> }.
+	 * token => { stages: string[], sources: array<string, array>, mappings: array<string, array> }.
 	 */
 	public const BUNDLES_OPTION = 'eventos_ticketing_import_bundles';
 
@@ -64,15 +64,21 @@ final class Ticketing_Import_Orchestrator {
 	}
 
 	/**
-	 * Start a multi-stage bundle import — one source per stage.
+	 * Start a multi-stage bundle import — one source per stage, and
+	 * optionally one explicit mapping per stage (e.g. resolved from an
+	 * Import Profile by {@see Import_Registry::start_profile_bundle()}).
+	 * A stage with no explicit mapping falls back to `Import_Engine`'s own
+	 * automatic column/alias detection, exactly as before this parameter
+	 * existed.
 	 *
-	 * @param array<string, array<string, mixed>> $stage_sources Entity slug => that stage's own source definition,
-	 *                                                            e.g. `['events' => [...], 'ticket_types' => [...], 'tickets' => [...]]`.
-	 * @param string[]                             $stages        Entity slugs to run, in order. Defaults to every
-	 *                                                            stage present in $stage_sources.
+	 * @param array<string, array<string, mixed>>  $stage_sources  Entity slug => that stage's own source definition,
+	 *                                                              e.g. `['events' => [...], 'ticket_types' => [...], 'tickets' => [...]]`.
+	 * @param string[]                              $stages         Entity slugs to run, in order. Defaults to every
+	 *                                                              stage present in $stage_sources.
+	 * @param array<string, array<string, mixed>>  $stage_mappings Entity slug => that stage's explicit mapping. Optional.
 	 * @return array<string, mixed>|WP_Error The first stage's run record.
 	 */
-	public static function run_bundle( array $stage_sources, array $stages = array() ) {
+	public static function run_bundle( array $stage_sources, array $stages = array(), array $stage_mappings = array() ) {
 		$stages = empty( $stages ) ? self::STAGE_ORDER : $stages;
 		$stages = array_values(
 			array_filter(
@@ -91,19 +97,23 @@ final class Ticketing_Import_Orchestrator {
 		$first_source                    = (array) $stage_sources[ $first ];
 		$first_source[ self::TOKEN_KEY ] = $token;
 
-		$run = Import_Engine::start(
-			array(
-				'source' => $first_source,
-				'entity' => $first,
-			)
+		$first_args = array(
+			'source' => $first_source,
+			'entity' => $first,
 		);
+
+		if ( isset( $stage_mappings[ $first ] ) ) {
+			$first_args['mapping'] = $stage_mappings[ $first ];
+		}
+
+		$run = Import_Engine::start( $first_args );
 
 		if ( is_wp_error( $run ) ) {
 			return $run;
 		}
 
 		if ( ! empty( $stages ) ) {
-			self::remember( $token, $stages, $stage_sources );
+			self::remember( $token, $stages, $stage_sources, $stage_mappings );
 		}
 
 		return $run;
@@ -130,9 +140,10 @@ final class Ticketing_Import_Orchestrator {
 			return;
 		}
 
-		$stages        = (array) ( $bundles[ $token ]['stages'] ?? array() );
-		$stage_sources = (array) ( $bundles[ $token ]['sources'] ?? array() );
-		$next          = array_shift( $stages );
+		$stages         = (array) ( $bundles[ $token ]['stages'] ?? array() );
+		$stage_sources  = (array) ( $bundles[ $token ]['sources'] ?? array() );
+		$stage_mappings = (array) ( $bundles[ $token ]['mappings'] ?? array() );
+		$next           = array_shift( $stages );
 
 		if ( $stages ) {
 			$bundles[ $token ]['stages'] = array_values( $stages );
@@ -146,31 +157,37 @@ final class Ticketing_Import_Orchestrator {
 			$next_source                    = (array) $stage_sources[ $next ];
 			$next_source[ self::TOKEN_KEY ] = $token;
 
-			Import_Engine::start(
-				array(
-					'source' => $next_source,
-					'entity' => $next,
-				)
+			$next_args = array(
+				'source' => $next_source,
+				'entity' => $next,
 			);
+
+			if ( isset( $stage_mappings[ $next ] ) ) {
+				$next_args['mapping'] = $stage_mappings[ $next ];
+			}
+
+			Import_Engine::start( $next_args );
 		}
 	}
 
 	/**
-	 * Persist the remaining stages and every stage's own source for one
-	 * bundle token.
+	 * Persist the remaining stages, every stage's own source, and every
+	 * stage's own mapping (if any) for one bundle token.
 	 *
-	 * @param string                               $token         Bundle token.
-	 * @param string[]                              $stages        Remaining entity slugs, in order.
-	 * @param array<string, array<string, mixed>>   $stage_sources Every stage's source (only the remaining
+	 * @param string                               $token          Bundle token.
+	 * @param string[]                              $stages         Remaining entity slugs, in order.
+	 * @param array<string, array<string, mixed>>  $stage_sources  Every stage's source (only the remaining
 	 *                                                              ones are ever read back, but stored as
 	 *                                                              given — simplest correct shape).
+	 * @param array<string, array<string, mixed>>  $stage_mappings Every stage's explicit mapping, if any.
 	 * @return void
 	 */
-	private static function remember( string $token, array $stages, array $stage_sources ): void {
+	private static function remember( string $token, array $stages, array $stage_sources, array $stage_mappings = array() ): void {
 		$bundles          = get_option( self::BUNDLES_OPTION, array() );
 		$bundles[ $token ] = array(
-			'stages'  => array_values( $stages ),
-			'sources' => $stage_sources,
+			'stages'   => array_values( $stages ),
+			'sources'  => $stage_sources,
+			'mappings' => $stage_mappings,
 		);
 
 		update_option( self::BUNDLES_OPTION, $bundles, false );

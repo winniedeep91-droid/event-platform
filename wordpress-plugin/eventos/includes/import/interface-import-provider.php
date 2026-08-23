@@ -90,9 +90,12 @@ interface Import_Provider_Interface {
 	/**
 	 * Import the source into the target entity.
 	 *
-	 * @param array<string, mixed>  $source  Source definition.
-	 * @param array<string, string> $mapping Target field => source column.
-	 * @param array<string, mixed>  $context Run context (run_id, entity, dry_run, offset, limit).
+	 * @param array<string, mixed>          $source  Source definition.
+	 * @param array<string, string|mixed[]> $mapping Target field => source column, or the extended
+	 *                                                shape {@see Abstract_Import_Provider::apply_mapping()} accepts
+	 *                                                (const / column+transform / columns+transform) when this run's
+	 *                                                mapping came from an Import Profile rather than auto-detection.
+	 * @param array<string, mixed>          $context Run context (run_id, entity, dry_run, offset, limit).
 	 * @return array{imported: int, skipped: int, failed: int, errors: string[], created: array<int, array<string, mixed>>, done: bool}|WP_Error
 	 */
 	public function import( array $source, array $mapping, array $context );

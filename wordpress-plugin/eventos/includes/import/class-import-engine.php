@@ -184,7 +184,15 @@ final class Import_Engine {
 			'provider'   => $provider->slug(),
 			'entity'     => $entity,
 			'source'     => $source,
-			'mapping'    => array_map( 'strval', $mapping ),
+			// A mapping value is normally a plain source column name
+			// (stringified as before); Import_Profile_Mapper can also
+			// produce the small extended shape Abstract_Import_Provider::
+			// apply_mapping() understands (const/column+transform/
+			// columns+transform) — left as-is rather than forced to string.
+			'mapping'    => array_map(
+				static fn( $value ) => is_array( $value ) ? $value : (string) $value,
+				$mapping
+			),
 			'dry_run'    => ! empty( $args['dry_run'] ),
 			'status'     => 'queued',
 			'offset'     => 0,

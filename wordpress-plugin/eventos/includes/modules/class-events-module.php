@@ -1355,6 +1355,7 @@ final class Events_Module extends Abstract_Module {
 					'name'            => array( 'label' => __( 'Name', 'eventos' ), 'required' => true, 'aliases' => array( 'ticket_type', 'tier_name' ) ),
 					'price'           => array( 'label' => __( 'Price', 'eventos' ), 'type' => 'number', 'aliases' => array( 'cost' ) ),
 					'capacity'        => array( 'label' => __( 'Capacity', 'eventos' ), 'type' => 'integer' ),
+					'status'          => array( 'label' => __( 'Status', 'eventos' ) ),
 				),
 				// Every provider's "did we already import this?" question is
 				// answered the same way at every stage of this cascade: an
@@ -1386,14 +1387,20 @@ final class Events_Module extends Abstract_Module {
 
 					$resolver = new Ticket_Type_Identity_Resolver( new Ticket_Type_Repository(), new Ticket_Type_Identity_Repository() );
 
+					$status = trim( (string) ( $record['status'] ?? '' ) );
+
 					$resolved = $resolver->resolve_or_create(
 						$source,
 						$source_id,
 						(int) $event_identity['event_id'],
-						array(
-							'name'     => (string) ( $record['name'] ?? '' ),
-							'price'    => (float) ( $record['price'] ?? 0 ),
-							'capacity' => array_key_exists( 'capacity', $record ) && '' !== (string) $record['capacity'] ? (int) $record['capacity'] : null,
+						array_filter(
+							array(
+								'name'     => (string) ( $record['name'] ?? '' ),
+								'price'    => (float) ( $record['price'] ?? 0 ),
+								'capacity' => array_key_exists( 'capacity', $record ) && '' !== (string) $record['capacity'] ? (int) $record['capacity'] : null,
+								'status'   => '' !== $status ? $status : null,
+							),
+							static fn( $value ): bool => null !== $value
 						)
 					);
 
@@ -1418,6 +1425,7 @@ final class Events_Module extends Abstract_Module {
 					'name'                  => array( 'label' => __( 'Attendee name', 'eventos' ), 'aliases' => array( 'guest_name', 'attendee' ) ),
 					'email'                 => array( 'label' => __( 'Attendee email', 'eventos' ), 'type' => 'email', 'aliases' => array( 'guest_email' ) ),
 					'phone'                 => array( 'label' => __( 'Attendee phone', 'eventos' ) ),
+					'status'                => array( 'label' => __( 'Ticket status', 'eventos' ) ),
 				),
 				// A generic ticketing-platform "attendee" row: resolves its
 				// Event and Ticket Type by their own already-imported
@@ -1499,7 +1507,8 @@ final class Events_Module extends Abstract_Module {
 						return $resolved;
 					}
 
-					$ticket = $resolved['ticket'];
+					$ticket  = $resolved['ticket'];
+					$tickets = new Ticket_Repository();
 
 					if ( $resolved['created'] ) {
 						$guests = new Guest_Repository();
@@ -1515,7 +1524,18 @@ final class Events_Module extends Abstract_Module {
 							)
 						);
 
-						( new Ticket_Repository() )->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+						$tickets->set_guest( (int) $ticket['id'], (int) $guest['id'] );
+					}
+
+					// Applied on every resolution, not only on first
+					// creation — a re-imported export reflecting a status
+					// the source recorded later (e.g. a since-refunded
+					// ticket) should update the existing Ticket rather than
+					// only ever setting status once.
+					$status = trim( (string) ( $record['status'] ?? '' ) );
+
+					if ( '' !== $status && $status !== $ticket['status'] ) {
+						$tickets->set_status( (int) $ticket['id'], $status );
 					}
 
 					return (int) $ticket['id'];

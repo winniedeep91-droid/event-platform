@@ -466,6 +466,33 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Set a ticket's status directly — for a source (e.g. an import) that
+	 * already knows the ticket's final state, rather than issuing it active
+	 * and separately cancelling. Does not touch capacity/stock; callers that
+	 * need WooCommerce stock kept in sync already do so via the ticket-type
+	 * repository's own sync path.
+	 *
+	 * @param int    $id     Ticket ID.
+	 * @param string $status New status.
+	 * @return void
+	 */
+	public function set_status( int $id, string $status ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			Event_Schema::tickets(),
+			array(
+				'status'     => $status,
+				'updated_at' => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
 	 * Ticket and check-in totals for an event, used by the live scanner counter.
 	 *
 	 * @param int $event_id Event ID.

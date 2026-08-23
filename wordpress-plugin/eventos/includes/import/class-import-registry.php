@@ -38,6 +38,13 @@ final class Import_Registry {
 	private static array $targets = array();
 
 	/**
+	 * Registered Import Profiles keyed by profile id.
+	 *
+	 * @var array<string, array<string, mixed>>
+	 */
+	private static array $profiles = array();
+
+	/**
 	 * Whether the built in providers have been registered.
 	 *
 	 * @var bool
@@ -62,6 +69,12 @@ final class Import_Registry {
 		self::register( new Providers\Howler_Provider() );
 		self::register( new Providers\Webtickets_Provider() );
 		self::register( new Providers\Fixr_Provider() );
+
+		self::register_profile( Profiles\Generic_Csv_Profile::definition() );
+
+		foreach ( Profiles\Platform_Profile_Stubs::definitions() as $stub ) {
+			self::register_profile( $stub );
+		}
 
 		/**
 		 * Fires so modules can register additional import providers and targets.
@@ -118,6 +131,151 @@ final class Import_Registry {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Register an Import Profile — declarative source-column-to-target-field
+	 * mapping metadata for one exported file shape. A profile describes how
+	 * to build the `mapping` {@see Import_Engine::start()} already accepts;
+	 * it never touches persistence, identity resolution or orchestration.
+	 *
+	 * Accepted keys: id, name, provider, format, version, status,
+	 * description, bundle (ordered entity slugs for a multi-stage import),
+	 * stages (entity slug => ['fields' => [...]], see
+	 * {@see Import_Profile_Mapper::resolve_mapping()} for the field spec shape).
+	 *
+	 * @param array<string, mixed> $profile Profile definition.
+	 * @return void
+	 */
+	public static function register_profile( array $profile ): void {
+		$id = sanitize_key( (string) ( $profile['id'] ?? '' ) );
+
+		if ( '' === $id ) {
+			return;
+		}
+
+		self::$profiles[ $id ] = wp_parse_args(
+			$profile,
+			array(
+				'id'          => $id,
+				'name'        => $id,
+				'provider'    => '',
+				'format'      => 'csv',
+				'version'     => '1.0.0',
+				'status'      => 'ready',
+				'description' => '',
+				'bundle'      => array(),
+				'stages'      => array(),
+			)
+		);
+	}
+
+	/**
+	 * Every registered Import Profile.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	public static function profiles(): array {
+		self::bootstrap();
+
+		return self::$profiles;
+	}
+
+	/**
+	 * A single Import Profile.
+	 *
+	 * @param string $id Profile id.
+	 * @return array<string, mixed>|null
+	 */
+	public static function profile( string $id ): ?array {
+		self::bootstrap();
+
+		return self::$profiles[ sanitize_key( $id ) ] ?? null;
+	}
+
+	/**
+	 * Start a single-stage import using a registered profile's field
+	 * mapping for that stage — resolves the mapping, then hands off to the
+	 * unchanged {@see Import_Engine::start()}.
+	 *
+	 * @param string                $profile_id Profile id.
+	 * @param string                $entity     Target entity/stage slug.
+	 * @param array<string, mixed>  $source     Source definition for this stage.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public static function start_profile_import( string $profile_id, string $entity, array $source ) {
+		$profile = self::profile( $profile_id );
+
+		if ( null === $profile ) {
+			return new WP_Error( 'eventos_import_profile_unknown', __( 'Unknown import profile.', 'eventos' ), array( 'status' => 404 ) );
+		}
+
+		$preview = Import_Engine::preview( $source, 1 );
+
+		if ( is_wp_error( $preview ) ) {
+			return $preview;
+		}
+
+		$mapping = Import_Profile_Mapper::resolve_mapping( $profile, $entity, (array) $preview['columns'] );
+
+		if ( is_wp_error( $mapping ) ) {
+			return $mapping;
+		}
+
+		return Import_Engine::start(
+			array(
+				'source'  => $source,
+				'entity'  => $entity,
+				'mapping' => $mapping,
+			)
+		);
+	}
+
+	/**
+	 * Start a multi-stage bundle import using a profile's declared stage
+	 * order and per-stage field mapping — resolves every stage's mapping,
+	 * then hands off entirely to the unchanged
+	 * {@see Ticketing_Import_Orchestrator::run_bundle()} for execution and
+	 * chaining. A profile only ever *describes* the bundle; the orchestrator
+	 * still owns running it.
+	 *
+	 * @param string                                $profile_id    Profile id.
+	 * @param array<string, array<string, mixed>>    $stage_sources Entity slug => that stage's own source definition.
+	 * @return array<string, mixed>|WP_Error The first stage's run record.
+	 */
+	public static function start_profile_bundle( string $profile_id, array $stage_sources ) {
+		$profile = self::profile( $profile_id );
+
+		if ( null === $profile ) {
+			return new WP_Error( 'eventos_import_profile_unknown', __( 'Unknown import profile.', 'eventos' ), array( 'status' => 404 ) );
+		}
+
+		$stages = ! empty( $profile['bundle'] ) ? (array) $profile['bundle'] : array_keys( (array) $profile['stages'] );
+		$stages = array_values( array_intersect( $stages, array_keys( $stage_sources ) ) );
+
+		if ( empty( $stages ) ) {
+			return new WP_Error( 'eventos_import_profile_no_bundle', __( 'This profile has no bundle stages matching the given sources.', 'eventos' ), array( 'status' => 400 ) );
+		}
+
+		$stage_mappings = array();
+
+		foreach ( $stages as $entity ) {
+			$preview = Import_Engine::preview( $stage_sources[ $entity ], 1 );
+
+			if ( is_wp_error( $preview ) ) {
+				return $preview;
+			}
+
+			$mapping = Import_Profile_Mapper::resolve_mapping( $profile, $entity, (array) $preview['columns'] );
+
+			if ( is_wp_error( $mapping ) ) {
+				return $mapping;
+			}
+
+			$stage_mappings[ $entity ] = $mapping;
+		}
+
+		return Ticketing_Import_Orchestrator::run_bundle( $stage_sources, $stages, $stage_mappings );
 	}
 
 	/**

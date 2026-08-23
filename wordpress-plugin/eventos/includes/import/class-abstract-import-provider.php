@@ -344,15 +344,56 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 	/**
 	 * Translate a source row into a target record.
 	 *
-	 * @param array<string, mixed>  $row     Source row.
-	 * @param array<string, string> $mapping Target field => source column.
+	 * A mapping value is normally a plain source column name (unchanged
+	 * behaviour). {@see \EventOS\Import\Import_Profile_Mapper} can also
+	 * produce a small extended shape this method understands:
+	 * `['const' => …]` (a literal, not read from any column — e.g. a fixed
+	 * identity type), `['column' => …, 'transform' => …]`, and
+	 * `['columns' => […], 'transform' => …]` (join several columns, e.g.
+	 * first + last name). Every existing target keeps working unchanged
+	 * since they only ever pass plain strings.
+	 *
+	 * @param array<string, mixed>          $row     Source row.
+	 * @param array<string, string|mixed[]> $mapping Target field => source column, or the extended shape above.
 	 * @return array<string, mixed>
 	 */
 	protected function apply_mapping( array $row, array $mapping ): array {
 		$record = array();
 
-		foreach ( $mapping as $field => $column ) {
-			$record[ (string) $field ] = $row[ (string) $column ] ?? null;
+		foreach ( $mapping as $field => $spec ) {
+			$field = (string) $field;
+
+			if ( is_string( $spec ) ) {
+				$record[ $field ] = $row[ $spec ] ?? null;
+				continue;
+			}
+
+			$spec = (array) $spec;
+
+			if ( array_key_exists( 'const', $spec ) ) {
+				$record[ $field ] = $spec['const'];
+				continue;
+			}
+
+			if ( ! empty( $spec['columns'] ) && is_array( $spec['columns'] ) ) {
+				$values = array();
+
+				foreach ( $spec['columns'] as $column ) {
+					$values[] = $row[ (string) $column ] ?? '';
+				}
+
+				$record[ $field ] = '' !== (string) ( $spec['transform'] ?? '' )
+					? Import_Profile_Mapper::normalize( (string) $spec['transform'], $values )
+					: implode( ' ', array_filter( array_map( 'strval', $values ) ) );
+
+				continue;
+			}
+
+			$value = isset( $spec['column'] ) ? ( $row[ (string) $spec['column'] ] ?? null ) : null;
+
+			$record[ $field ] = null !== $value && '' !== (string) ( $spec['transform'] ?? '' )
+				? Import_Profile_Mapper::normalize( (string) $spec['transform'], $value )
+				: $value;
 		}
 
 		return $record;

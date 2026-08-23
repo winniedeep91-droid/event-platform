@@ -20,6 +20,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * admission, carrying a reference back to the WooCommerce order/order item
  * it was purchased through (or none, for complimentary tickets) without
  * duplicating any financial data WooCommerce already owns.
+ *
+ * `price`/`discount`/`fee`/`refunded_amount` are the one exception, and
+ * only for tickets with no WooCommerce order behind them at all (imported
+ * historical tickets — `wc_order_id = 0`): there, EventOS is the only place
+ * that value could ever be persisted. A WooCommerce-sourced ticket's
+ * financial truth remains WooCommerce's alone; nothing here ever writes
+ * these columns for a ticket with a real `wc_order_id`.
  */
 final class Ticket_Repository {
 
@@ -42,6 +49,10 @@ final class Ticket_Repository {
 		'checked_in'       => '%d',
 		'checked_in_at'    => '%s',
 		'checked_in_by'    => '%d',
+		'price'            => '%f',
+		'discount'         => '%f',
+		'fee'              => '%f',
+		'refunded_amount'  => '%f',
 		'created_at'       => '%s',
 		'updated_at'       => '%s',
 	);
@@ -493,6 +504,146 @@ final class Ticket_Repository {
 	}
 
 	/**
+	 * Set a ticket's attendance state directly, with an explicit (possibly
+	 * historical) check-in timestamp — for a source (e.g. a historical
+	 * import) that already knows when the ticket was admitted, rather than
+	 * the live scanner's {@see \EventOS\Events\Ticketing_Service::validate_ticket()}
+	 * path, which always stamps "now" and enforces a concurrency guard that
+	 * doesn't apply here. Reconciliation policy (whether to call this at
+	 * all, and with what values) lives in the caller, not here — this is a
+	 * raw setter, same split as {@see set_status()}.
+	 *
+	 * @param int         $id            Ticket ID.
+	 * @param bool        $checked_in    New attendance state.
+	 * @param string|null $checked_in_at Historical check-in timestamp (MySQL UTC), or null to clear it.
+	 * @param int         $checked_in_by WP user id of the operator, or 0 when there is none (e.g. an import).
+	 * @return void
+	 */
+	public function set_checked_in( int $id, bool $checked_in, ?string $checked_in_at, int $checked_in_by = 0 ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			Event_Schema::tickets(),
+			array(
+				'checked_in'    => $checked_in ? 1 : 0,
+				'checked_in_at' => $checked_in ? $checked_in_at : null,
+				'checked_in_by' => $checked_in ? $checked_in_by : 0,
+				'updated_at'    => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%d', '%s', '%d', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Set a ticket's historical financial snapshot directly — only ever
+	 * meaningful for a ticket with no WooCommerce order behind it (an
+	 * imported historical ticket); WooCommerce remains the sole financial
+	 * source of truth for every other ticket. `null` means "no financial
+	 * data was supplied for this field" and is kept distinct from `0.0`
+	 * ("confirmed to be free/zero") throughout — never coerced together.
+	 *
+	 * @param int        $id              Ticket ID.
+	 * @param float|null $price           Gross amount paid, or null.
+	 * @param float|null $discount        Discount applied, or null.
+	 * @param float|null $fee             Fee attributed to this ticket, or null.
+	 * @param float|null $refunded_amount Refunded amount (non-negative magnitude), or null.
+	 * @return void
+	 */
+	public function set_financials( int $id, ?float $price, ?float $discount, ?float $fee, ?float $refunded_amount ): void {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->update(
+			Event_Schema::tickets(),
+			array(
+				'price'           => $price,
+				'discount'        => $discount,
+				'fee'             => $fee,
+				'refunded_amount' => $refunded_amount,
+				'updated_at'      => current_time( 'mysql', true ),
+			),
+			array( 'id' => $id ),
+			array( '%f', '%f', '%f', '%f', '%s' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * Sum of every imported (non-WooCommerce) ticket's financial snapshot
+	 * for one event — the imported-ticket half of
+	 * {@see \EventOS\Finance\Finance_Report_Builder::build()}'s revenue
+	 * figures, alongside the existing WooCommerce-order half.
+	 *
+	 * @param int $event_id Event ID.
+	 * @return array{gross: float, discount: float, fee: float, refunded: float, count: int}
+	 */
+	public function imported_financial_totals( int $event_id ): array {
+		$totals = $this->imported_financial_totals_by_event( array( $event_id ) );
+
+		return $totals[ $event_id ] ?? array(
+			'gross'    => 0.0,
+			'discount' => 0.0,
+			'fee'      => 0.0,
+			'refunded' => 0.0,
+			'count'    => 0,
+		);
+	}
+
+	/**
+	 * Batched imported-ticket financial totals across many events (or every
+	 * event when `$event_ids` is empty) — mirrors
+	 * {@see \EventOS\Finance\Expense_Repository::total_for_events()}/`total_all()`'s
+	 * existing batching convention so an organisation-wide summary stays
+	 * one query, not one per event.
+	 *
+	 * @param int[] $event_ids Event IDs; empty scopes to every event.
+	 * @return array<int, array{gross: float, discount: float, fee: float, refunded: float, count: int}>
+	 */
+	public function imported_financial_totals_by_event( array $event_ids = array() ): array {
+		global $wpdb;
+
+		$table = Event_Schema::tickets();
+		$where = "wc_order_id = 0 AND price IS NOT NULL";
+		$args  = array();
+
+		if ( ! empty( $event_ids ) ) {
+			$placeholders = implode( ',', array_fill( 0, count( $event_ids ), '%d' ) );
+			$where       .= " AND event_id IN ({$placeholders})";
+			$args         = array_map( 'intval', $event_ids );
+		}
+
+		$sql = "SELECT event_id,
+				COALESCE(SUM(price), 0) AS gross,
+				COALESCE(SUM(discount), 0) AS discount,
+				COALESCE(SUM(fee), 0) AS fee,
+				COALESCE(SUM(refunded_amount), 0) AS refunded,
+				COUNT(*) AS count
+			FROM {$table}
+			WHERE {$where}
+			GROUP BY event_id";
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results( $args ? $wpdb->prepare( $sql, $args ) : $sql, ARRAY_A );
+
+		$totals = array();
+
+		foreach ( (array) $rows as $row ) {
+			$totals[ (int) $row['event_id'] ] = array(
+				'gross'    => (float) $row['gross'],
+				'discount' => (float) $row['discount'],
+				'fee'      => (float) $row['fee'],
+				'refunded' => (float) $row['refunded'],
+				'count'    => (int) $row['count'],
+			);
+		}
+
+		return $totals;
+	}
+
+	/**
 	 * Ticket and check-in totals for an event, used by the live scanner counter.
 	 *
 	 * @param int $event_id Event ID.
@@ -832,6 +983,13 @@ final class Ticket_Repository {
 			'checked_in'       => (bool) $row['checked_in'],
 			'checked_in_at'    => $row['checked_in_at'],
 			'checked_in_by'    => (int) $row['checked_in_by'],
+			// NULL ("no financial data supplied") and 0.00 ("confirmed
+			// free") are deliberately kept distinct — never coerce these
+			// with a bare (float) cast, which would turn NULL into 0.0.
+			'price'            => null !== $row['price'] ? (float) $row['price'] : null,
+			'discount'         => null !== $row['discount'] ? (float) $row['discount'] : null,
+			'fee'              => null !== $row['fee'] ? (float) $row['fee'] : null,
+			'refunded_amount'  => null !== $row['refunded_amount'] ? (float) $row['refunded_amount'] : null,
 			'created_at'       => (string) $row['created_at'],
 			'updated_at'       => (string) $row['updated_at'],
 		);

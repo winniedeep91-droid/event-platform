@@ -149,6 +149,36 @@ final class Generic_Csv_Profile {
 							'transform' => 'phone',
 						),
 						'status'                => array( 'column' => 'Ticket Status', 'transform' => 'status' ),
+						'checked_in'            => array(
+							'column'    => 'Checked In',
+							'aliases'   => array( 'check_in', 'checked_in', 'checked-in', 'attendance', 'scanned', 'scan_status' ),
+							'transform' => 'attendance_status',
+						),
+						'checked_in_at'         => array(
+							'column'    => 'Check In Time',
+							'aliases'   => array( 'check_in_time', 'checked_in_at', 'scan_time' ),
+							'transform' => 'datetime',
+						),
+						'price'                 => array(
+							'column'    => 'Price Paid',
+							'aliases'   => array( 'Amount Paid', 'Paid' ),
+							'transform' => 'money',
+						),
+						'discount'              => array(
+							'column'    => 'Discount',
+							'aliases'   => array( 'Discount Amount', 'Coupon Amount' ),
+							'transform' => 'money',
+						),
+						'fee'                   => array(
+							'column'    => 'Fee',
+							'aliases'   => array( 'Booking Fee', 'Service Fee' ),
+							'transform' => 'money',
+						),
+						'refunded_amount'       => array(
+							'column'    => 'Refunded Amount',
+							'aliases'   => array( 'Refund', 'Refund Amount' ),
+							'transform' => 'money',
+						),
 					),
 				),
 			),

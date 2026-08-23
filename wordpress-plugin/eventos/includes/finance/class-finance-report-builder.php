@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace EventOS\Finance;
 
 use EventOS\Events\Ticket_Order_Resolver;
+use EventOS\Events\Ticket_Repository;
 use EventOS\WooCommerce;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -43,14 +44,24 @@ final class Finance_Report_Builder {
 	private Expense_Repository $expenses;
 
 	/**
+	 * Ticket repository — source of imported (non-WooCommerce) ticket
+	 * financial data; see {@see Ticket_Repository::imported_financial_totals()}.
+	 *
+	 * @var Ticket_Repository
+	 */
+	private Ticket_Repository $tickets;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param Ticket_Order_Resolver $orders   Order resolver.
 	 * @param Expense_Repository    $expenses Expense repository.
+	 * @param Ticket_Repository     $tickets  Ticket repository.
 	 */
-	public function __construct( Ticket_Order_Resolver $orders, Expense_Repository $expenses ) {
+	public function __construct( Ticket_Order_Resolver $orders, Expense_Repository $expenses, Ticket_Repository $tickets ) {
 		$this->orders   = $orders;
 		$this->expenses = $expenses;
+		$this->tickets  = $tickets;
 	}
 
 	/**
@@ -87,6 +98,19 @@ final class Finance_Report_Builder {
 				$fee_seen      = true;
 				$payment_fees += array_sum( array_column( $order_fees, 'total' ) );
 			}
+		}
+
+		// Imported (non-WooCommerce) ticket financials — same accumulators,
+		// one P&L; see class docblock and Ticket_Repository::imported_financial_totals().
+		$imported = $this->tickets->imported_financial_totals( $event_id );
+
+		$ticket_revenue += $imported['gross'];
+		$discounts      += $imported['discount'];
+		$refunds        += $imported['refunded'];
+		$payment_fees   += $imported['fee'];
+
+		if ( $imported['fee'] > 0.0 ) {
+			$fee_seen = true;
 		}
 
 		return $this->assemble(
@@ -147,6 +171,21 @@ final class Finance_Report_Builder {
 		$expense_total = empty( $event_ids )
 			? $this->expenses->total_all()
 			: $this->expenses->total_for_events( $event_ids );
+
+		// Imported (non-WooCommerce) ticket financials — same accumulators,
+		// one P&L; see build()'s matching blend.
+		$imported_totals = $this->tickets->imported_financial_totals_by_event( $event_ids );
+
+		foreach ( $imported_totals as $imported ) {
+			$ticket_revenue += $imported['gross'];
+			$discounts      += $imported['discount'];
+			$refunds        += $imported['refunded'];
+			$payment_fees   += $imported['fee'];
+
+			if ( $imported['fee'] > 0.0 ) {
+				$fee_seen = true;
+			}
+		}
 
 		return $this->assemble(
 			0,

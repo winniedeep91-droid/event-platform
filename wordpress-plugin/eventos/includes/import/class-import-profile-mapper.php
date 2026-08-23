@@ -48,7 +48,7 @@ final class Import_Profile_Mapper {
 	 *
 	 * @var string[]
 	 */
-	private const KNOWN_TRANSFORMS = array( 'money', 'full_name', 'status', 'email', 'phone' );
+	private const KNOWN_TRANSFORMS = array( 'money', 'full_name', 'status', 'email', 'phone', 'attendance_status', 'datetime' );
 
 	/**
 	 * Resolve a profile stage's field spec against a source's actual columns.
@@ -357,6 +357,12 @@ final class Import_Profile_Mapper {
 			case 'phone':
 				return Identity_Normalizer::normalize_phone( (string) $value );
 
+			case 'attendance_status':
+				return self::normalize_attendance_status( (string) $value );
+
+			case 'datetime':
+				return self::normalize_datetime( (string) $value );
+
 			default:
 				return $value;
 		}
@@ -423,5 +429,89 @@ final class Import_Profile_Mapper {
 		);
 
 		return $map[ $key ] ?? $value;
+	}
+
+	/**
+	 * Deterministic, non-fuzzy attendance-value normalization (Phase 5).
+	 * Returns `true`/`false` for a recognised value, `''` for genuinely
+	 * blank input (no information — the caller treats this as "row didn't
+	 * say"), or the *original string unchanged* for anything else — the
+	 * same "pass through rather than guess" contract {@see normalize_status()}
+	 * already established, so the caller can tell "recognised" (a PHP
+	 * bool) apart from "unrecognised, needs a warning" (still a string)
+	 * without this method ever inventing a meaning for an ambiguous value.
+	 *
+	 * @param string $value Raw attendance/check-in text.
+	 * @return bool|string
+	 */
+	private static function normalize_attendance_status( string $value ) {
+		$key = strtolower( trim( $value ) );
+
+		if ( '' === $key ) {
+			return '';
+		}
+
+		$checked_in = array(
+			'checked_in',
+			'checked-in',
+			'checked in',
+			'yes',
+			'true',
+			'1',
+			'valid',
+			'used',
+			'scanned',
+			'admitted',
+		);
+
+		$not_checked_in = array(
+			'not_checked_in',
+			'not-checked-in',
+			'not checked in',
+			'no',
+			'false',
+			'0',
+			'unused',
+			'not scanned',
+			'not_scanned',
+		);
+
+		if ( in_array( $key, $checked_in, true ) ) {
+			return true;
+		}
+
+		if ( in_array( $key, $not_checked_in, true ) ) {
+			return false;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Parse a free-form date/time string into EventOS's own MySQL UTC
+	 * convention — the exact `strtotime()` + `gmdate('Y-m-d H:i:s', …)`
+	 * approach already established in
+	 * {@see \EventOS\Events\Event_Validator::datetime()}, reused here
+	 * (rather than routed through that validator, which only ever runs
+	 * against Event fields) because a ticket's check-in timestamp needs
+	 * the identical parsing behaviour. An unparsable value passes through
+	 * unchanged so the caller can distinguish "no timestamp given" (empty)
+	 * from "a timestamp was given but couldn't be understood" (still the
+	 * original string) and warn accordingly, rather than silently
+	 * discarding it.
+	 *
+	 * @param string $value Raw date/time text.
+	 * @return string
+	 */
+	private static function normalize_datetime( string $value ): string {
+		$value = trim( $value );
+
+		if ( '' === $value ) {
+			return '';
+		}
+
+		$timestamp = strtotime( $value );
+
+		return $timestamp ? gmdate( 'Y-m-d H:i:s', $timestamp ) : $value;
 	}
 }

@@ -144,13 +144,14 @@ final class Analytics_Module extends Abstract_Module {
 	public function comparison(): Event_Comparison_Builder {
 		if ( null === $this->comparison ) {
 			$ticket_types = new Ticket_Type_Repository();
+			$tickets = new Ticket_Repository();
 			$order_resolver = new Ticket_Order_Resolver( $ticket_types );
 
 			$this->comparison = new Event_Comparison_Builder(
 				new Event_Repository(),
-				new Brand_Report_Builder( $ticket_types, new Ticket_Repository(), $order_resolver, new Event_Repository() ),
+				new Brand_Report_Builder( $ticket_types, $tickets, $order_resolver, new Event_Repository() ),
 				$order_resolver,
-				new Finance_Report_Builder( $order_resolver, new Expense_Repository() ),
+				new Finance_Report_Builder( $order_resolver, new Expense_Repository(), $tickets ),
 				$this->insights()
 			);
 		}

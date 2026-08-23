@@ -21,7 +21,7 @@ final class Event_Schema {
 	/**
 	 * Schema version stored in the options table.
 	 */
-	public const VERSION = '1.7.0';
+	public const VERSION = '1.8.0';
 
 	/**
 	 * Option holding the installed schema version.
@@ -444,6 +444,10 @@ final class Event_Schema {
 			checked_in TINYINT UNSIGNED NOT NULL DEFAULT 0,
 			checked_in_at DATETIME NULL,
 			checked_in_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			price DECIMAL(12,2) NULL,
+			discount DECIMAL(12,2) NULL,
+			fee DECIMAL(12,2) NULL,
+			refunded_amount DECIMAL(12,2) NULL,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),

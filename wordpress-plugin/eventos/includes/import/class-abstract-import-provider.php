@@ -164,10 +164,18 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 	/**
 	 * Import a batch of rows into the target entity.
 	 *
+	 * A writer's return value may be a bare scalar id (success, no note),
+	 * a `WP_Error` (failure — counted in `failed`), or, since Phase 5,
+	 * `['id' => …, 'warning' => 'message']`: still a success (counted in
+	 * `imported`), but with a non-fatal reconciliation note surfaced in
+	 * `warnings` — e.g. "source says unchecked but this ticket was already
+	 * checked in; existing check-in kept." Every existing target, which
+	 * only ever returns a bare scalar or `WP_Error`, is unaffected.
+	 *
 	 * @param array<string, mixed>  $source  Source definition.
 	 * @param array<string, string> $mapping Target field => source column.
 	 * @param array<string, mixed>  $context Run context.
-	 * @return array{imported: int, skipped: int, failed: int, errors: string[], created: array<int, array<string, mixed>>, done: bool}|WP_Error
+	 * @return array{imported: int, skipped: int, failed: int, errors: string[], warnings: string[], created: array<int, array<string, mixed>>, done: bool}|WP_Error
 	 */
 	public function import( array $source, array $mapping, array $context ) {
 		$valid = $this->validate( $source );
@@ -201,6 +209,7 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 			'skipped'  => 0,
 			'failed'   => 0,
 			'errors'   => array(),
+			'warnings' => array(),
 			'created'  => array(),
 			'done'     => count( $rows ) < $limit,
 			// 'new'/'existing'/'duplicate' are only ever populated when the
@@ -259,11 +268,27 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 				continue;
 			}
 
+			$warning = null;
+
+			if ( is_array( $written ) && array_key_exists( 'id', $written ) ) {
+				$warning = isset( $written['warning'] ) ? (string) $written['warning'] : null;
+				$written = $written['id'];
+			}
+
 			++$result['imported'];
 			$result['created'][] = array(
 				'entity' => $entity,
 				'id'     => is_scalar( $written ) ? $written : '',
 			);
+
+			if ( null !== $warning && '' !== $warning ) {
+				$result['warnings'][] = sprintf(
+					/* translators: 1: row number, 2: warning message. */
+					__( 'Row %1$d: %2$s', 'eventos' ),
+					$offset + (int) $index + 1,
+					$warning
+				);
+			}
 		}
 
 		return $result;

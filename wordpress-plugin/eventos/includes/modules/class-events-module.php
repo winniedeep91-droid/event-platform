@@ -1426,6 +1426,12 @@ final class Events_Module extends Abstract_Module {
 					'email'                 => array( 'label' => __( 'Attendee email', 'eventos' ), 'type' => 'email', 'aliases' => array( 'guest_email' ) ),
 					'phone'                 => array( 'label' => __( 'Attendee phone', 'eventos' ) ),
 					'status'                => array( 'label' => __( 'Ticket status', 'eventos' ) ),
+					'checked_in'            => array( 'label' => __( 'Checked in', 'eventos' ), 'aliases' => array( 'check_in', 'checked-in', 'attendance', 'scanned', 'scan_status' ) ),
+					'checked_in_at'         => array( 'label' => __( 'Checked-in at', 'eventos' ), 'aliases' => array( 'check_in_time', 'scan_time' ) ),
+					'price'                 => array( 'label' => __( 'Price paid', 'eventos' ), 'type' => 'number' ),
+					'discount'              => array( 'label' => __( 'Discount', 'eventos' ), 'type' => 'number' ),
+					'fee'                   => array( 'label' => __( 'Fee', 'eventos' ), 'type' => 'number' ),
+					'refunded_amount'       => array( 'label' => __( 'Refunded amount', 'eventos' ), 'type' => 'number' ),
 				),
 				// A generic ticketing-platform "attendee" row: resolves its
 				// Event and Ticket Type by their own already-imported
@@ -1538,7 +1544,79 @@ final class Events_Module extends Abstract_Module {
 						$tickets->set_status( (int) $ticket['id'], $status );
 					}
 
-					return (int) $ticket['id'];
+					$warning = null;
+
+					// Attendance reconciliation. The check-in timestamp is
+					// "first write wins" — once a ticket is checked in
+					// (whether by this import or a live scanner event) it is
+					// never re-mutated by a later import, so a stale re-run
+					// can never silently erase or rewrite a real scan. A
+					// parsed timestamp on its own is treated as authoritative
+					// evidence of attendance even when the boolean column is
+					// blank or absent.
+					$checked_in_raw    = $record['checked_in'] ?? '';
+					$checked_in_at_raw = trim( (string) ( $record['checked_in_at'] ?? '' ) );
+					$checked_in_at     = null;
+
+					if ( '' !== $checked_in_at_raw ) {
+						if ( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $checked_in_at_raw ) ) {
+							$checked_in_at = $checked_in_at_raw;
+						} else {
+							$warning = __( 'Check-in timestamp could not be understood and was ignored.', 'eventos' );
+						}
+					}
+
+					$source_checked_in = null;
+
+					if ( is_bool( $checked_in_raw ) ) {
+						$source_checked_in = $checked_in_raw;
+					} elseif ( '' !== trim( (string) $checked_in_raw ) ) {
+						$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Attendance value was not recognised and was ignored.', 'eventos' );
+					}
+
+					if ( null === $source_checked_in && null !== $checked_in_at ) {
+						$source_checked_in = true;
+					}
+
+					if ( null !== $source_checked_in ) {
+						if ( (bool) $ticket['checked_in'] ) {
+							if ( false === $source_checked_in ) {
+								$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Source reports this ticket as not checked in, but it was already checked in — the existing check-in was kept.', 'eventos' );
+							}
+						} elseif ( true === $source_checked_in ) {
+							$tickets->set_checked_in( (int) $ticket['id'], true, $checked_in_at, 0 );
+						}
+					}
+
+					// Financial reconciliation. Unlike attendance, these
+					// fields have no competing live writer, so they are set
+					// (overwritten) from the source on every import — the
+					// same source row simply replaces its own prior values
+					// rather than accumulating a second record. Only applied
+					// when the row actually carries at least one financial
+					// field, so an attendee-only import never wipes
+					// financial data set by a previous, richer import.
+					$price_raw           = trim( (string) ( $record['price'] ?? '' ) );
+					$discount_raw        = trim( (string) ( $record['discount'] ?? '' ) );
+					$fee_raw             = trim( (string) ( $record['fee'] ?? '' ) );
+					$refunded_amount_raw = trim( (string) ( $record['refunded_amount'] ?? '' ) );
+
+					if ( '' !== $price_raw || '' !== $discount_raw || '' !== $fee_raw || '' !== $refunded_amount_raw ) {
+						$tickets->set_financials(
+							(int) $ticket['id'],
+							'' !== $price_raw ? (float) $price_raw : null,
+							'' !== $discount_raw ? (float) $discount_raw : null,
+							'' !== $fee_raw ? (float) $fee_raw : null,
+							'' !== $refunded_amount_raw ? (float) $refunded_amount_raw : null
+						);
+					}
+
+					return null !== $warning
+						? array(
+							'id'      => (int) $ticket['id'],
+							'warning' => $warning,
+						)
+						: (int) $ticket['id'];
 				},
 			)
 		);

@@ -203,6 +203,7 @@ final class Import_Engine {
 			'existing'   => 0,
 			'duplicate'  => 0,
 			'errors'     => array(),
+			'warnings'   => array(),
 			'created'    => array(),
 			'user_id'    => get_current_user_id(),
 			'created_at' => current_time( 'mysql', true ),
@@ -289,6 +290,7 @@ final class Import_Engine {
 		$run['existing']   = (int) ( $run['existing'] ?? 0 ) + (int) ( $result['existing'] ?? 0 );
 		$run['duplicate']  = (int) ( $run['duplicate'] ?? 0 ) + (int) ( $result['duplicate'] ?? 0 );
 		$run['errors']     = array_slice( array_merge( (array) $run['errors'], (array) $result['errors'] ), 0, 100 );
+		$run['warnings']   = array_slice( array_merge( (array) $run['warnings'], (array) ( $result['warnings'] ?? array() ) ), 0, 100 );
 		$run['created']    = array_merge( (array) $run['created'], (array) $result['created'] );
 		$run['offset']     = (int) $run['offset'] + self::BATCH_SIZE;
 		$run['status']     = $result['done'] ? 'complete' : 'running';

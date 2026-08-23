@@ -11,6 +11,7 @@ namespace EventOS\Modules;
 
 use EventOS\Abstract_Module;
 use EventOS\Events\Ticket_Order_Resolver;
+use EventOS\Events\Ticket_Repository;
 use EventOS\Events\Ticket_Type_Repository;
 use EventOS\Finance\Expense_Repository;
 use EventOS\Finance\Expense_Service;
@@ -132,7 +133,8 @@ final class Finance_Module extends Abstract_Module {
 		if ( null === $this->reports ) {
 			$this->reports = new Finance_Report_Builder(
 				new Ticket_Order_Resolver( new Ticket_Type_Repository() ),
-				new Expense_Repository()
+				new Expense_Repository(),
+				new Ticket_Repository()
 			);
 		}
 

@@ -353,50 +353,17 @@ abstract class Abstract_Import_Provider implements Import_Provider_Interface {
 	 * first + last name). Every existing target keeps working unchanged
 	 * since they only ever pass plain strings.
 	 *
+	 * The actual row transformation lives on `Import_Profile_Mapper` itself
+	 * — the same code a "preview mapped data" REST endpoint needs, so it
+	 * exists in exactly one place rather than being duplicated here and in
+	 * a controller.
+	 *
 	 * @param array<string, mixed>          $row     Source row.
 	 * @param array<string, string|mixed[]> $mapping Target field => source column, or the extended shape above.
 	 * @return array<string, mixed>
 	 */
 	protected function apply_mapping( array $row, array $mapping ): array {
-		$record = array();
-
-		foreach ( $mapping as $field => $spec ) {
-			$field = (string) $field;
-
-			if ( is_string( $spec ) ) {
-				$record[ $field ] = $row[ $spec ] ?? null;
-				continue;
-			}
-
-			$spec = (array) $spec;
-
-			if ( array_key_exists( 'const', $spec ) ) {
-				$record[ $field ] = $spec['const'];
-				continue;
-			}
-
-			if ( ! empty( $spec['columns'] ) && is_array( $spec['columns'] ) ) {
-				$values = array();
-
-				foreach ( $spec['columns'] as $column ) {
-					$values[] = $row[ (string) $column ] ?? '';
-				}
-
-				$record[ $field ] = '' !== (string) ( $spec['transform'] ?? '' )
-					? Import_Profile_Mapper::normalize( (string) $spec['transform'], $values )
-					: implode( ' ', array_filter( array_map( 'strval', $values ) ) );
-
-				continue;
-			}
-
-			$value = isset( $spec['column'] ) ? ( $row[ (string) $spec['column'] ] ?? null ) : null;
-
-			$record[ $field ] = null !== $value && '' !== (string) ( $spec['transform'] ?? '' )
-				? Import_Profile_Mapper::normalize( (string) $spec['transform'], $value )
-				: $value;
-		}
-
-		return $record;
+		return Import_Profile_Mapper::apply_to_row( $row, $mapping );
 	}
 
 	/**

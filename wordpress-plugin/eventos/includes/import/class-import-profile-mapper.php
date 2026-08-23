@@ -41,6 +41,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Import_Profile_Mapper {
 
 	/**
+	 * Every transform name {@see self::normalize()} recognises — used to
+	 * validate a mapping (including an administrator-edited one) before an
+	 * import starts, rather than silently letting an unknown transform pass
+	 * through unnoticed.
+	 *
+	 * @var string[]
+	 */
+	private const KNOWN_TRANSFORMS = array( 'money', 'full_name', 'status', 'email', 'phone' );
+
+	/**
 	 * Resolve a profile stage's field spec against a source's actual columns.
 	 *
 	 * @param array<string, mixed> $profile           Registered profile definition.
@@ -91,6 +101,141 @@ final class Import_Profile_Mapper {
 		}
 
 		return $mapping;
+	}
+
+	/**
+	 * Apply a resolved mapping to one source row — the single place this
+	 * transformation happens. Used both by the real import writer path
+	 * ({@see Abstract_Import_Provider::apply_mapping()}, a thin delegate to
+	 * this method) and by a "preview mapped data" caller, so the preview a
+	 * user sees is guaranteed to be exactly what import will persist.
+	 *
+	 * @param array<string, mixed>          $row     Source row.
+	 * @param array<string, string|mixed[]> $mapping Target field => source column, or the extended shape
+	 *                                                {@see self::resolve_mapping()} produces.
+	 * @return array<string, mixed>
+	 */
+	public static function apply_to_row( array $row, array $mapping ): array {
+		$record = array();
+
+		foreach ( $mapping as $field => $spec ) {
+			$field = (string) $field;
+
+			if ( is_string( $spec ) ) {
+				$record[ $field ] = $row[ $spec ] ?? null;
+				continue;
+			}
+
+			$spec = (array) $spec;
+
+			if ( array_key_exists( 'const', $spec ) ) {
+				$record[ $field ] = $spec['const'];
+				continue;
+			}
+
+			if ( ! empty( $spec['columns'] ) && is_array( $spec['columns'] ) ) {
+				$values = array();
+
+				foreach ( $spec['columns'] as $column ) {
+					$values[] = $row[ (string) $column ] ?? '';
+				}
+
+				$record[ $field ] = '' !== (string) ( $spec['transform'] ?? '' )
+					? self::normalize( (string) $spec['transform'], $values )
+					: implode( ' ', array_filter( array_map( 'strval', $values ) ) );
+
+				continue;
+			}
+
+			$value = isset( $spec['column'] ) ? ( $row[ (string) $spec['column'] ] ?? null ) : null;
+
+			$record[ $field ] = null !== $value && '' !== (string) ( $spec['transform'] ?? '' )
+				? self::normalize( (string) $spec['transform'], $value )
+				: $value;
+		}
+
+		return $record;
+	}
+
+	/**
+	 * Validate a resolved (or administrator-edited) mapping before an
+	 * import is allowed to start — a pre-flight, mapping-level check,
+	 * complementary to {@see \EventOS\Import\Import_Registry::validate_record()}'s
+	 * existing per-row validation at import time.
+	 *
+	 * @param array<string, mixed>            $mapping       Target field => source column, or the extended shape.
+	 * @param array<string, array<string, mixed>> $target_fields Target's registered field definitions
+	 *                                                             ({@see \EventOS\Import\Import_Registry::target()}'s `fields`).
+	 * @param string[]                        $available_columns Real source column headers.
+	 * @return array<int, array{field: string, message: string}> Empty when the mapping is valid.
+	 */
+	public static function validate_mapping( array $mapping, array $target_fields, array $available_columns ): array {
+		$errors = array();
+
+		foreach ( $target_fields as $field => $definition ) {
+			$field = (string) $field;
+			$spec  = $mapping[ $field ] ?? null;
+
+			if ( ! empty( $definition['required'] ) && null === $spec ) {
+				$errors[] = array(
+					'field'   => $field,
+					'message' => __( 'This required field is not mapped to any source column.', 'eventos' ),
+				);
+			}
+		}
+
+		foreach ( $mapping as $field => $spec ) {
+			$field = (string) $field;
+
+			if ( is_string( $spec ) ) {
+				if ( ! in_array( $spec, $available_columns, true ) ) {
+					$errors[] = array(
+						'field'   => $field,
+						/* translators: %s: source column name. */
+						'message' => sprintf( __( 'Mapped source column "%s" does not exist in this file.', 'eventos' ), $spec ),
+					);
+				}
+
+				continue;
+			}
+
+			$spec = (array) $spec;
+
+			if ( array_key_exists( 'const', $spec ) ) {
+				continue; // A constant needs no column and is always valid.
+			}
+
+			$columns = ! empty( $spec['columns'] ) && is_array( $spec['columns'] ) ? $spec['columns'] : ( isset( $spec['column'] ) ? array( $spec['column'] ) : array() );
+
+			if ( empty( $columns ) ) {
+				$errors[] = array(
+					'field'   => $field,
+					'message' => __( 'This mapping has neither a source column nor a constant value.', 'eventos' ),
+				);
+			}
+
+			foreach ( $columns as $column ) {
+				if ( ! in_array( (string) $column, $available_columns, true ) ) {
+					$errors[] = array(
+						'field'   => $field,
+						/* translators: %s: source column name. */
+						'message' => sprintf( __( 'Mapped source column "%s" does not exist in this file.', 'eventos' ), (string) $column ),
+					);
+				}
+			}
+
+			$transform = (string) ( $spec['transform'] ?? '' );
+
+			if ( '' !== $transform && ! in_array( $transform, self::KNOWN_TRANSFORMS, true ) ) {
+				$errors[] = array(
+					'field'   => $field,
+					/* translators: %s: transform name. */
+					'message' => sprintf( __( 'Unknown transform "%s".', 'eventos' ), $transform ),
+				);
+			}
+		}
+
+		return $errors;
 	}
 
 	/**

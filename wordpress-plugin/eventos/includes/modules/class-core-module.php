@@ -26,6 +26,7 @@ use EventOS\Job_Queue;
 use EventOS\Rest\Docs_Controller;
 use EventOS\Rest\Export_Controller;
 use EventOS\Rest\Import_Controller;
+use EventOS\Rest\Import_Profile_Controller;
 use EventOS\Rest\Rest_Registry;
 use EventOS\Rest\Search_Controller;
 use EventOS\Search_Registry;
@@ -228,6 +229,55 @@ final class Core_Module extends Abstract_Module {
 					'callback'   => array( Import_Controller::class, 'rollback' ),
 					'log_action' => 'import_rolled_back',
 					'summary'    => __( 'Undo a completed import run.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Import_Profile_Controller::class, 'profiles' ),
+					'summary'    => __( 'List every registered Import Profile.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)',
+					'methods'    => 'GET',
+					'capability' => Capabilities::VIEW_DASHBOARD,
+					'callback'   => array( Import_Profile_Controller::class, 'profile' ),
+					'summary'    => __( 'A single Import Profile.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)/mapping',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Profile_Controller::class, 'resolve_mapping' ),
+					'summary'    => __( 'Detect a source\'s columns and resolve the profile\'s default mapping for one stage.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)/validate',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Profile_Controller::class, 'validate_mapping' ),
+					'summary'    => __( 'Validate a mapping before an import is allowed to start.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)/preview',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Profile_Controller::class, 'preview' ),
+					'summary'    => __( 'Preview a small batch of source rows exactly as mapping will transform them.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)/start',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Profile_Controller::class, 'start' ),
+					'summary'    => __( 'Start a single-stage profile-driven import.', 'eventos' ),
+				),
+				array(
+					'route'      => '/imports/profiles/(?P<id>[a-z0-9-]+)/bundle',
+					'methods'    => 'POST',
+					'capability' => Capabilities::RUN_IMPORTS,
+					'callback'   => array( Import_Profile_Controller::class, 'bundle' ),
+					'summary'    => __( 'Start a multi-stage profile-driven bundle import.', 'eventos' ),
 				),
 				array(
 					'route'      => '/search/entities',

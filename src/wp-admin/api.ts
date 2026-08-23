@@ -1334,12 +1334,61 @@ export interface ImportPreview {
   provider: string;
 }
 
+/**
+ * One target field's mapping — a plain source column name (unchanged
+ * behaviour), or the small extended shape an Import Profile can produce:
+ * a fixed literal (`const`), a column plus a normalizer (`transform`), or
+ * several columns joined by a transform (e.g. first + last name). The
+ * actual transformation always happens server-side
+ * (Import_Profile_Mapper::apply_to_row()) — this type only describes what
+ * the UI can display/edit, never re-implements it.
+ */
+export type ImportMappingSpec =
+  | string
+  | { const: string }
+  | { column: string; transform?: string }
+  | { columns: string[]; transform?: string };
+
+export interface ImportProfileStage {
+  fields: Record<string, unknown>;
+}
+
+export interface ImportProfile {
+  id: string;
+  name: string;
+  provider: string;
+  format: string;
+  version: string;
+  status: string; // "ready" | "stub", but treat as an open string
+  description: string;
+  bundle: string[];
+  stages: Record<string, ImportProfileStage>;
+}
+
+export interface ImportProfileMappingResolution {
+  columns: string[];
+  mapping: Record<string, ImportMappingSpec>;
+}
+
+export interface ImportProfileValidation {
+  valid: boolean;
+  errors: Array<{ field: string; message: string }>;
+}
+
+export interface ImportProfilePreview {
+  columns: string[];
+  mapping: Record<string, ImportMappingSpec>;
+  rows: Array<Record<string, string>>;
+  mapped_rows: Array<Record<string, unknown>>;
+  total: number;
+}
+
 export interface ImportRun {
   id: number;
   provider: string;
   entity: string;
   source: ImportSource;
-  mapping: Record<string, string>;
+  mapping: Record<string, unknown>;
   dry_run: boolean;
   status: "queued" | "running" | "complete" | "failed" | "rolled_back" | "cancelled";
   offset: number;
@@ -1493,6 +1542,55 @@ export const platformApi = {
   importRun: (id: number) => unwrap<ImportRun>(`imports/runs/${id}`),
   rollbackImport: (id: number) =>
     unwrap<ImportRun>(`imports/runs/${id}/rollback`, { method: "POST" }),
+
+  // ── Import Profiles (Phase 3 mapping/normalization, Phase 4 UI) ────────
+  importProfiles: () => unwrap<{ profiles: ImportProfile[] }>("imports/profiles"),
+  importProfile: (id: string) => unwrap<ImportProfile>(`imports/profiles/${id}`),
+  resolveProfileMapping: (profileId: string, entity: string, source: ImportSource) =>
+    unwrap<ImportProfileMappingResolution>(`imports/profiles/${profileId}/mapping`, {
+      method: "POST",
+      body: JSON.stringify({ entity, source }),
+    }),
+  validateProfileMapping: (
+    profileId: string,
+    entity: string,
+    mapping: Record<string, ImportMappingSpec>,
+    columns: string[],
+  ) =>
+    unwrap<ImportProfileValidation>(`imports/profiles/${profileId}/validate`, {
+      method: "POST",
+      body: JSON.stringify({ entity, mapping, columns }),
+    }),
+  previewProfileMapping: (
+    profileId: string,
+    entity: string,
+    source: ImportSource,
+    mapping: Record<string, ImportMappingSpec>,
+    limit = 10,
+  ) =>
+    unwrap<ImportProfilePreview>(`imports/profiles/${profileId}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ entity, source, mapping, limit }),
+    }),
+  startProfileImport: (
+    profileId: string,
+    entity: string,
+    source: ImportSource,
+    mapping: Record<string, ImportMappingSpec>,
+  ) =>
+    unwrap<ImportRun>(`imports/profiles/${profileId}/start`, {
+      method: "POST",
+      body: JSON.stringify({ entity, source, mapping }),
+    }),
+  startProfileBundle: (
+    profileId: string,
+    stageSources: Record<string, ImportSource>,
+    stageMappings: Record<string, Record<string, ImportMappingSpec>> = {},
+  ) =>
+    unwrap<ImportRun>(`imports/profiles/${profileId}/bundle`, {
+      method: "POST",
+      body: JSON.stringify({ stage_sources: stageSources, stage_mappings: stageMappings }),
+    }),
 };
 
 // ── WooCommerce integration types ─────────────────────────────────────────

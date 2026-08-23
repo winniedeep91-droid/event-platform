@@ -194,16 +194,19 @@ final class Import_Registry {
 	}
 
 	/**
-	 * Start a single-stage import using a registered profile's field
-	 * mapping for that stage — resolves the mapping, then hands off to the
-	 * unchanged {@see Import_Engine::start()}.
+	 * Resolve a profile's default mapping for one stage against a real
+	 * source — the read-only "detect columns → suggest mapping" step an
+	 * admin UI shows for review before an import starts. Used internally by
+	 * {@see self::start_profile_import()}/{@see self::start_profile_bundle()}
+	 * when no explicit override is given, and directly by REST callers that
+	 * only want to display the suggestion.
 	 *
 	 * @param string                $profile_id Profile id.
 	 * @param string                $entity     Target entity/stage slug.
 	 * @param array<string, mixed>  $source     Source definition for this stage.
-	 * @return array<string, mixed>|WP_Error
+	 * @return array{columns: string[], mapping: array<string, mixed>}|WP_Error
 	 */
-	public static function start_profile_import( string $profile_id, string $entity, array $source ) {
+	public static function resolve_profile_mapping( string $profile_id, string $entity, array $source ) {
 		$profile = self::profile( $profile_id );
 
 		if ( null === $profile ) {
@@ -222,6 +225,114 @@ final class Import_Registry {
 			return $mapping;
 		}
 
+		return array(
+			'columns' => (array) $preview['columns'],
+			'mapping' => $mapping,
+		);
+	}
+
+	/**
+	 * Validate a mapping (the profile's default, or an administrator's
+	 * edited version of it) against one target's field definitions and the
+	 * source's real columns — a pre-flight, mapping-level check.
+	 *
+	 * @param string                $entity            Target entity/stage slug.
+	 * @param array<string, mixed>  $mapping           Target field => source column, or the extended shape.
+	 * @param string[]              $available_columns Real source column headers.
+	 * @return array<int, array{field: string, message: string}>|WP_Error Empty array when valid.
+	 */
+	public static function validate_profile_mapping( string $entity, array $mapping, array $available_columns ) {
+		$target = self::target( $entity );
+
+		if ( null === $target ) {
+			return new WP_Error( 'eventos_import_unknown_entity', __( 'Unknown import target.', 'eventos' ), array( 'status' => 404 ) );
+		}
+
+		return Import_Profile_Mapper::validate_mapping( $mapping, (array) $target['fields'], $available_columns );
+	}
+
+	/**
+	 * Preview a small batch of source rows exactly as they will be
+	 * persisted — resolves the mapping (or uses the given override),
+	 * applies it via the same {@see Import_Profile_Mapper::apply_to_row()}
+	 * the real import writer path uses, and returns both the raw and
+	 * mapped values for display. Never processes more than `$limit` rows
+	 * (bounded by the existing, unchanged {@see Import_Engine::preview()}).
+	 *
+	 * @param string                $profile_id      Profile id.
+	 * @param string                $entity          Target entity/stage slug.
+	 * @param array<string, mixed>  $source          Source definition for this stage.
+	 * @param array<string, mixed>  $mapping_override Explicit mapping to use instead of the profile's default. Optional.
+	 * @param int                   $limit           Maximum rows to preview.
+	 * @return array{columns: string[], mapping: array<string, mixed>, rows: array<int, array<string, mixed>>, mapped_rows: array<int, array<string, mixed>>, total: int}|WP_Error
+	 */
+	public static function preview_profile_mapping( string $profile_id, string $entity, array $source, array $mapping_override = array(), int $limit = 10 ) {
+		if ( ! empty( $mapping_override ) ) {
+			if ( null === self::profile( $profile_id ) ) {
+				return new WP_Error( 'eventos_import_profile_unknown', __( 'Unknown import profile.', 'eventos' ), array( 'status' => 404 ) );
+			}
+
+			$mapping = $mapping_override;
+		} else {
+			$resolved = self::resolve_profile_mapping( $profile_id, $entity, $source );
+
+			if ( is_wp_error( $resolved ) ) {
+				return $resolved;
+			}
+
+			$mapping = $resolved['mapping'];
+		}
+
+		$preview = Import_Engine::preview( $source, $limit );
+
+		if ( is_wp_error( $preview ) ) {
+			return $preview;
+		}
+
+		$mapped_rows = array_map(
+			static fn( array $row ): array => Import_Profile_Mapper::apply_to_row( $row, $mapping ),
+			(array) $preview['rows']
+		);
+
+		return array(
+			'columns'     => (array) $preview['columns'],
+			'mapping'     => $mapping,
+			'rows'        => (array) $preview['rows'],
+			'mapped_rows' => $mapped_rows,
+			'total'       => (int) $preview['total'],
+		);
+	}
+
+	/**
+	 * Start a single-stage import using a registered profile's field
+	 * mapping for that stage — resolves the mapping (or uses the given
+	 * administrator override), then hands off to the unchanged
+	 * {@see Import_Engine::start()}. An override is never written back onto
+	 * the registered profile; it applies only to this one import.
+	 *
+	 * @param string                $profile_id       Profile id.
+	 * @param string                $entity           Target entity/stage slug.
+	 * @param array<string, mixed>  $source           Source definition for this stage.
+	 * @param array<string, mixed>  $mapping_override Explicit mapping to use instead of the profile's default. Optional.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public static function start_profile_import( string $profile_id, string $entity, array $source, array $mapping_override = array() ) {
+		if ( ! empty( $mapping_override ) ) {
+			if ( null === self::profile( $profile_id ) ) {
+				return new WP_Error( 'eventos_import_profile_unknown', __( 'Unknown import profile.', 'eventos' ), array( 'status' => 404 ) );
+			}
+
+			$mapping = $mapping_override;
+		} else {
+			$resolved = self::resolve_profile_mapping( $profile_id, $entity, $source );
+
+			if ( is_wp_error( $resolved ) ) {
+				return $resolved;
+			}
+
+			$mapping = $resolved['mapping'];
+		}
+
 		return Import_Engine::start(
 			array(
 				'source'  => $source,
@@ -233,17 +344,18 @@ final class Import_Registry {
 
 	/**
 	 * Start a multi-stage bundle import using a profile's declared stage
-	 * order and per-stage field mapping — resolves every stage's mapping,
-	 * then hands off entirely to the unchanged
-	 * {@see Ticketing_Import_Orchestrator::run_bundle()} for execution and
-	 * chaining. A profile only ever *describes* the bundle; the orchestrator
-	 * still owns running it.
+	 * order and per-stage field mapping (or an administrator's per-stage
+	 * override) — resolves every stage's mapping, then hands off entirely
+	 * to the unchanged {@see Ticketing_Import_Orchestrator::run_bundle()}
+	 * for execution and chaining. A profile only ever *describes* the
+	 * bundle; the orchestrator still owns running it.
 	 *
-	 * @param string                                $profile_id    Profile id.
-	 * @param array<string, array<string, mixed>>    $stage_sources Entity slug => that stage's own source definition.
+	 * @param string                                $profile_id             Profile id.
+	 * @param array<string, array<string, mixed>>    $stage_sources          Entity slug => that stage's own source definition.
+	 * @param array<string, array<string, mixed>>    $stage_mapping_overrides Entity slug => explicit mapping override. Optional.
 	 * @return array<string, mixed>|WP_Error The first stage's run record.
 	 */
-	public static function start_profile_bundle( string $profile_id, array $stage_sources ) {
+	public static function start_profile_bundle( string $profile_id, array $stage_sources, array $stage_mapping_overrides = array() ) {
 		$profile = self::profile( $profile_id );
 
 		if ( null === $profile ) {
@@ -260,19 +372,18 @@ final class Import_Registry {
 		$stage_mappings = array();
 
 		foreach ( $stages as $entity ) {
-			$preview = Import_Engine::preview( $stage_sources[ $entity ], 1 );
-
-			if ( is_wp_error( $preview ) ) {
-				return $preview;
+			if ( ! empty( $stage_mapping_overrides[ $entity ] ) ) {
+				$stage_mappings[ $entity ] = $stage_mapping_overrides[ $entity ];
+				continue;
 			}
 
-			$mapping = Import_Profile_Mapper::resolve_mapping( $profile, $entity, (array) $preview['columns'] );
+			$resolved = self::resolve_profile_mapping( $profile_id, $entity, $stage_sources[ $entity ] );
 
-			if ( is_wp_error( $mapping ) ) {
-				return $mapping;
+			if ( is_wp_error( $resolved ) ) {
+				return $resolved;
 			}
 
-			$stage_mappings[ $entity ] = $mapping;
+			$stage_mappings[ $entity ] = $resolved['mapping'];
 		}
 
 		return Ticketing_Import_Orchestrator::run_bundle( $stage_sources, $stages, $stage_mappings );

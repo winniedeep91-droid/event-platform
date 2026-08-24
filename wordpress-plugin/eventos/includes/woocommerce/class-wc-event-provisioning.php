@@ -80,7 +80,7 @@ final class Wc_Event_Provisioning {
 				continue;
 			}
 
-			$event_id = self::resolve_event( (int) $product_id, $product, $event_resolver, $event_identities, $counts );
+			$event_id = self::resolve_event( (int) $product_id, $product, $event_resolver, $event_identities, $event_service, $counts );
 
 			if ( $event_id <= 0 ) {
 				continue;
@@ -105,17 +105,33 @@ final class Wc_Event_Provisioning {
 	 * @param WC_Product_Variable      $product          The product.
 	 * @param Event_Identity_Resolver  $resolver         Event identity resolver.
 	 * @param Event_Identity_Repository $identities      Event identity repository.
+	 * @param Event_Service            $events           Event service, used only to validate a manual mapping still points to a real row.
 	 * @param array<string, int>      $counts           Counters, updated in place.
 	 * @return int Event ID, 0 on failure.
 	 */
-	private static function resolve_event( int $product_id, WC_Product_Variable $product, Event_Identity_Resolver $resolver, Event_Identity_Repository $identities, array &$counts ): int {
+	private static function resolve_event( int $product_id, WC_Product_Variable $product, Event_Identity_Resolver $resolver, Event_Identity_Repository $identities, Event_Service $events, array &$counts ): int {
 		$manual_event_id = (int) get_post_meta( $product_id, Wc_Meta::EVENT_META, true );
 
 		if ( $manual_event_id > 0 ) {
-			$identities->attach_identity( $manual_event_id, 'wc_product_id', (string) $product_id );
-			++$counts['events_matched'];
+			if ( null !== $events->events()->find( $manual_event_id ) ) {
+				$identities->attach_identity( $manual_event_id, 'wc_product_id', (string) $product_id );
+				++$counts['events_matched'];
 
-			return $manual_event_id;
+				return $manual_event_id;
+			}
+
+			// This product's manual-mapping meta points at an Event that no
+			// longer exists — most commonly because the plugin was deleted
+			// and reinstalled: uninstall.php drops every EventOS table but
+			// never touches WordPress's own post meta, so the mapping
+			// survives pointing at a row that isn't there. Trusting it as-is
+			// would silently attach an identity/ticket type to a
+			// non-existent event on every sync, forever, with no error and
+			// no way to self-heal. Clearing it here makes this exactly
+			// equivalent to "no manual mapping was ever set", so the normal
+			// identity-based resolve-or-create path below runs instead and
+			// provisions a real Event.
+			delete_post_meta( $product_id, Wc_Meta::EVENT_META );
 		}
 
 		$result = $resolver->resolve_or_create(

@@ -103,12 +103,17 @@ final class Person_Consent_Repository {
 	 * new history row — the prior record (if any) is left exactly as it
 	 * was, preserving the timeline.
 	 *
-	 * @param int    $person_id Person ID.
-	 * @param string $channel   Channel, e.g. 'email', 'sms', 'whatsapp'.
-	 * @param string $source    Free-form provenance, e.g. 'checkout_optin', 'portal'.
+	 * @param int         $person_id  Person ID.
+	 * @param string      $channel    Channel, e.g. 'email', 'sms', 'whatsapp'.
+	 * @param string      $source     Free-form provenance, e.g. 'checkout_optin', 'portal'.
+	 * @param string|null $granted_at When consent was actually given, MySQL UTC — defaults to now.
+	 *                                Lets a historical import (e.g. a fan list carrying its own
+	 *                                subscription date) record the real date rather than the
+	 *                                import's own run date, the same distinction {@see created_at}
+	 *                                (when this row was written) already keeps from {@see granted_at}.
 	 * @return array<string, mixed>|null
 	 */
-	public function grant( int $person_id, string $channel, string $source = '' ): ?array {
+	public function grant( int $person_id, string $channel, string $source = '', ?string $granted_at = null ): ?array {
 		global $wpdb;
 
 		$channel = sanitize_key( $channel );
@@ -131,7 +136,7 @@ final class Person_Consent_Repository {
 			array(
 				'person_id'  => $person_id,
 				'channel'    => $channel,
-				'granted_at' => $now,
+				'granted_at' => $granted_at ?? $now,
 				'source'     => sanitize_text_field( $source ),
 				'revoked_at' => null,
 				'created_at' => $now,

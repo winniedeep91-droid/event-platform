@@ -474,6 +474,15 @@ final class Crm_Module extends Abstract_Module {
 					'phone'       => array( 'label' => __( 'Phone', 'eventos' ), 'aliases' => array( 'primary_phone', 'mobile' ) ),
 					'location'    => array( 'label' => __( 'Location', 'eventos' ), 'aliases' => array( 'city' ) ),
 					'consent'     => array( 'label' => __( 'Marketing consent (yes/no)', 'eventos' ), 'aliases' => array( 'marketing_consent', 'opt_in' ) ),
+					// A subscription date is itself evidence of consent —
+					// same "a timestamp alone counts as proof" precedent the
+					// ticket check-in import already established — so a
+					// source with a "subscribed since" date but no separate
+					// yes/no column still grants consent, and grants it
+					// dated when the person actually subscribed rather than
+					// today (the import run date), matching how the ticket
+					// import preserves the real check-in time.
+					'subscribed_at' => array( 'label' => __( 'Subscribed since (date)', 'eventos' ), 'aliases' => array( 'subscribed', 'subscription_date', 'opted_in_at', 'consented_at' ) ),
 					'source'      => array( 'label' => __( 'Source', 'eventos' ), 'aliases' => array( 'origin' ) ),
 				),
 				'writer'     => static function ( array $record ) use ( $resolver, $consent ) {
@@ -507,8 +516,28 @@ final class Crm_Module extends Abstract_Module {
 						true
 					);
 
+					// A parseable subscription date is itself evidence of
+					// consent, same as an explicit yes — and when present,
+					// the grant is dated when the person actually
+					// subscribed rather than today. Parsed directly here
+					// (not routed through Import_Profile_Mapper's 'datetime'
+					// transform) since the generic hand-mapped import path
+					// this target is most often used from has no transform
+					// step at all — only a registered Import Profile does.
+					$subscribed_at_raw = trim( (string) ( $record['subscribed_at'] ?? '' ) );
+					$subscribed_at     = null;
+
+					if ( '' !== $subscribed_at_raw ) {
+						$timestamp = strtotime( $subscribed_at_raw );
+
+						if ( false !== $timestamp ) {
+							$subscribed_at = gmdate( 'Y-m-d H:i:s', $timestamp );
+							$wants_consent = true;
+						}
+					}
+
 					if ( $wants_consent && ! $consent->was_ever_granted( $person_id, 'email' ) ) {
-						$consent->grant( $person_id, 'email', 'import' );
+						$consent->grant( $person_id, 'email', 'import', $subscribed_at );
 					}
 
 					return $person_id;

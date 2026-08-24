@@ -251,6 +251,27 @@ final class Ticket_Fulfillment {
 	}
 
 	/**
+	 * Publicly re-run fulfilment for one order — the same logic
+	 * {@see self::handle_status_changed()} triggers live on a status
+	 * transition, exposed for a one-time backfill of orders whose
+	 * "processing"/"completed" transition happened before this order's
+	 * product had a linked ticket type (e.g. a WooCommerce product that
+	 * pre-dates {@see \EventOS\Woocommerce\Wc_Event_Provisioning::sync()}
+	 * ever running against it — a live status *change* never fires again
+	 * for an order that already reached its current status). Safe to call
+	 * on an already-fulfilled order: {@see self::fulfil_order_locked()}
+	 * skips any line item {@see Ticket_Repository::exists_for_order_item()}
+	 * already covers, so re-running this over every paid order is a no-op
+	 * for anything already ticketed and only fills the actual gap.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return void
+	 */
+	public function backfill_order( int $order_id ): void {
+		$this->fulfil_order( $order_id );
+	}
+
+	/**
 	 * Issue tickets and guests for every ticket-type line item on an order
 	 * that has not already been fulfilled.
 	 *

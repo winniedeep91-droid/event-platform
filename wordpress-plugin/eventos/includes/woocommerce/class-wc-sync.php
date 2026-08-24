@@ -15,10 +15,18 @@ use EventOS\Crm\Person_Metrics_Service;
 use EventOS\Crm\Person_Repository;
 use EventOS\Crm\Person_Resolver;
 use EventOS\Crm\Person_Timeline_Service;
+use EventOS\Events\Guest_Repository;
+use EventOS\Events\Ticket_Fulfillment;
+use EventOS\Events\Ticket_Order_Resolver;
+use EventOS\Events\Ticket_Repository;
+use EventOS\Events\Ticket_Type_Repository;
+use EventOS\Events\Waitlist_Repository;
+use EventOS\Events\Waitlist_Service;
 use EventOS\Job_Queue;
 use EventOS\Platform\Sync_Registry;
 use EventOS\WooCommerce;
 use RuntimeException;
+use Throwable;
 use WC_Order;
 use WP_User_Query;
 
@@ -42,6 +50,7 @@ final class Wc_Sync {
 		'orders'    => 'woocommerce_orders',
 		'customers' => 'woocommerce_customers',
 		'coupons'   => 'woocommerce_coupons',
+		'tickets'   => 'woocommerce_tickets',
 	);
 
 	/**
@@ -93,6 +102,15 @@ final class Wc_Sync {
 					'direction'   => 'inbound',
 					'interval'    => HOUR_IN_SECONDS,
 					'handler'     => array( __CLASS__, 'sync_coupons' ),
+				),
+				array(
+					'slug'        => self::TARGETS['tickets'],
+					'label'       => __( 'WooCommerce ticket fulfilment', 'eventos' ),
+					'description' => __( 'Issue EventOS tickets for paid orders that never triggered live fulfilment — e.g. orders placed before their product had a linked ticket type. Safe to re-run: already-fulfilled orders are skipped.', 'eventos' ),
+					'module'      => 'woocommerce',
+					'direction'   => 'inbound',
+					'interval'    => HOUR_IN_SECONDS,
+					'handler'     => array( __CLASS__, 'sync_tickets' ),
 				),
 			)
 		);
@@ -188,6 +206,62 @@ final class Wc_Sync {
 			'failed'    => $failed,
 			/* translators: %d: number of orders. */
 			'message'   => sprintf( _n( 'Synced %d order.', 'Synced %d orders.', $processed, 'eventos' ), $processed ),
+		);
+	}
+
+	/**
+	 * Re-run ticket fulfilment for every paid order — a one-time (and
+	 * safely repeatable) backfill for orders whose "processing"/"completed"
+	 * transition happened before their product had a ticket type linked to
+	 * it (see {@see \EventOS\Events\Ticket_Fulfillment::backfill_order()}).
+	 * Live checkout never needs this — it is only for orders that predate
+	 * an Event/Ticket Type being provisioned for their product, most
+	 * commonly right after {@see Wc_Event_Provisioning::sync()} first links
+	 * an existing WooCommerce product's history.
+	 *
+	 * Deliberately scoped to the same {@see \EventOS\Events\Ticket_Order_Resolver::PAID_STATUSES}
+	 * every revenue figure already uses — an order this sync would skip is
+	 * also an order that was never counted as revenue, so there is no
+	 * order this method treats as "sold" that Finance/Brand reporting does
+	 * not already treat as sold too.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function sync_tickets(): array {
+		self::require_woocommerce();
+
+		$order_ids = wc_get_orders(
+			array(
+				'limit'  => -1,
+				'status' => Ticket_Order_Resolver::PAID_STATUSES,
+				'return' => 'ids',
+			)
+		);
+
+		$fulfilment = new Ticket_Fulfillment(
+			new Ticket_Type_Repository(),
+			new Ticket_Repository(),
+			new Guest_Repository(),
+			new Waitlist_Service( new Waitlist_Repository(), new Ticket_Type_Repository(), new Ticket_Repository() )
+		);
+
+		$processed = 0;
+		$failed    = 0;
+
+		foreach ( $order_ids as $order_id ) {
+			try {
+				$fulfilment->backfill_order( (int) $order_id );
+				++$processed;
+			} catch ( Throwable $error ) {
+				++$failed;
+			}
+		}
+
+		return array(
+			'processed' => $processed,
+			'failed'    => $failed,
+			/* translators: %d: number of orders checked. */
+			'message'   => sprintf( _n( 'Checked %d paid order for missing tickets.', 'Checked %d paid orders for missing tickets.', $processed, 'eventos' ), $processed ),
 		);
 	}
 
@@ -447,6 +521,7 @@ final class Wc_Sync {
 				'orders'    => 0,
 				'customers' => 0,
 				'coupons'   => 0,
+				'tickets'   => 0,
 			);
 		}
 
@@ -475,11 +550,29 @@ final class Wc_Sync {
 		$coupon_counts = (array) wp_count_posts( 'shop_coupon' );
 		$coupons       = (int) ( $coupon_counts['publish'] ?? 0 );
 
+		$tickets = 0;
+
+		if ( function_exists( 'wc_get_orders' ) ) {
+			// "Total" for this target is scoped to what it actually
+			// processes — every paid order, not every order regardless of
+			// status — so it reads meaningfully next to 'processed'/'errors'
+			// rather than always looking partially "unsynced".
+			$paid_result = wc_get_orders(
+				array(
+					'limit'    => 1,
+					'status'   => Ticket_Order_Resolver::PAID_STATUSES,
+					'paginate' => true,
+				)
+			);
+			$tickets     = (int) ( $paid_result->total ?? 0 );
+		}
+
 		return array(
 			'products'  => $products,
 			'orders'    => $orders,
 			'customers' => $customers,
 			'coupons'   => $coupons,
+			'tickets'   => $tickets,
 		);
 	}
 

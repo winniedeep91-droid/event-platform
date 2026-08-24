@@ -149,6 +149,11 @@ final class Generic_Csv_Profile {
 							'transform' => 'phone',
 						),
 						'status'                => array( 'column' => 'Ticket Status', 'transform' => 'status' ),
+						'is_complimentary'      => array(
+							'column'    => 'Complimentary',
+							'aliases'   => array( 'complimentary', 'comp', 'is_comp', 'guestlist', 'Guestlist' ),
+							'transform' => 'attendance_status',
+						),
 						'checked_in'            => array(
 							'column'    => 'Checked In',
 							'aliases'   => array( 'check_in', 'checked_in', 'checked-in', 'attendance', 'scanned', 'scan_status' ),

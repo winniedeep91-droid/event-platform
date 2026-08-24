@@ -1416,16 +1416,34 @@ final class Events_Module extends Abstract_Module {
 				'module'     => $this->slug(),
 				'capability' => Capabilities::RUN_IMPORTS,
 				'fields'     => array(
-					'event_source'          => array( 'label' => __( 'Event source', 'eventos' ), 'required' => true ),
-					'event_source_id'       => array( 'label' => __( 'Source event ID', 'eventos' ), 'required' => true ),
+						// event_source/event_source_id/ticket_type_source_id/
+						// source_id are only conditionally required — see
+						// wc_order_id below — so their presence is validated
+						// in the writer itself (both branches already did
+						// this inline before wc_order_id existed) rather than
+						// declaratively here.
+					'event_source'          => array( 'label' => __( 'Event source', 'eventos' ) ),
+					'event_source_id'       => array( 'label' => __( 'Source event ID', 'eventos' ) ),
 					'ticket_type_source'    => array( 'label' => __( 'Ticket type source', 'eventos' ) ),
-					'ticket_type_source_id' => array( 'label' => __( 'Source ticket-type ID', 'eventos' ), 'required' => true ),
+					'ticket_type_source_id' => array( 'label' => __( 'Source ticket-type ID', 'eventos' ) ),
 					'source'                => array( 'label' => __( 'Source', 'eventos' ) ),
-					'source_id'             => array( 'label' => __( 'Source ticket ID', 'eventos' ), 'required' => true ),
+					'source_id'             => array( 'label' => __( 'Source ticket ID', 'eventos' ) ),
+					// An alternative to event_source*/ticket_type_source*/
+					// source*: when a row already has a real WooCommerce
+					// order behind it, the ticket already exists (created by
+					// live checkout or the WC ticket-fulfilment backfill,
+					// correctly attached to whichever variation was actually
+					// purchased) — this row only needs to reconcile
+					// attendance onto that existing ticket, not create a new
+					// one. wc_order_occurrence disambiguates an order with
+					// more than one ticket (1-based, ordered by ticket id).
+					'wc_order_id'           => array( 'label' => __( 'WooCommerce order ID', 'eventos' ), 'type' => 'number' ),
+					'wc_order_occurrence'   => array( 'label' => __( 'Position within the order', 'eventos' ), 'type' => 'number' ),
 					'name'                  => array( 'label' => __( 'Attendee name', 'eventos' ), 'aliases' => array( 'guest_name', 'attendee' ) ),
 					'email'                 => array( 'label' => __( 'Attendee email', 'eventos' ), 'type' => 'email', 'aliases' => array( 'guest_email' ) ),
 					'phone'                 => array( 'label' => __( 'Attendee phone', 'eventos' ) ),
 					'status'                => array( 'label' => __( 'Ticket status', 'eventos' ) ),
+					'is_complimentary'      => array( 'label' => __( 'Complimentary', 'eventos' ), 'aliases' => array( 'complimentary', 'comp', 'is_comp', 'guestlist' ) ),
 					'checked_in'            => array( 'label' => __( 'Checked in', 'eventos' ), 'aliases' => array( 'check_in', 'checked-in', 'attendance', 'scanned', 'scan_status' ) ),
 					'checked_in_at'         => array( 'label' => __( 'Checked-in at', 'eventos' ), 'aliases' => array( 'check_in_time', 'scan_time' ) ),
 					'price'                 => array( 'label' => __( 'Price paid', 'eventos' ), 'type' => 'number' ),
@@ -1447,6 +1465,12 @@ final class Events_Module extends Abstract_Module {
 				// idempotency comes entirely from the ticket's own source
 				// identity via {@see Ticket_Identity_Resolver}.
 				'writer'     => static function ( array $record ) {
+					$wc_order_id = (int) ( $record['wc_order_id'] ?? 0 );
+
+					if ( $wc_order_id > 0 ) {
+						return self::reconcile_wc_order_ticket( $record, $wc_order_id );
+					}
+
 					$event_source    = trim( (string) ( $record['event_source'] ?? '' ) );
 					$event_source_id = trim( (string) ( $record['event_source_id'] ?? '' ) );
 
@@ -1469,6 +1493,24 @@ final class Events_Module extends Abstract_Module {
 
 					$ticket_type_identity = ( new Ticket_Type_Identity_Repository() )->find_by_type_value( $ticket_type_source, $ticket_type_source_id );
 
+					// Ticket types provisioned from WooCommerce (see
+					// Wc_Event_Provisioning::resolve_ticket_type()) never get
+					// a row in the generic ticket_type_identities table —
+					// unlike Events, that provisioning path only ever sets
+					// the wc_product_id *column* directly on ticket_types,
+					// matching how Ticket_Fulfillment::find_ticket_type_by_product()
+					// already looks a WC-sourced ticket type up. Without this
+					// fallback, a 'wc_product_id' source could never resolve
+					// an existing WC-linked ticket type through this import
+					// target at all — only ones a prior CSV import created.
+					if ( null === $ticket_type_identity && 'wc_product_id' === $ticket_type_source ) {
+						$wc_ticket_type = ( new Ticket_Type_Repository() )->find_by_wc_product_id( (int) $ticket_type_source_id );
+
+						if ( null !== $wc_ticket_type ) {
+							$ticket_type_identity = array( 'ticket_type_id' => $wc_ticket_type['id'] );
+						}
+					}
+
 					if ( null === $ticket_type_identity ) {
 						return new WP_Error( 'eventos_import_ticket_type_not_found', __( 'No ticket type matches this source ID — import ticket types first.', 'eventos' ) );
 					}
@@ -1483,6 +1525,16 @@ final class Events_Module extends Abstract_Module {
 					$name  = trim( (string) ( $record['name'] ?? '' ) );
 					$email = sanitize_email( (string) ( $record['email'] ?? '' ) );
 					$phone = trim( (string) ( $record['phone'] ?? '' ) );
+
+					// Same "accept a resolved bool from a transform, or a raw
+					// recognised word if the mapping applied none" tolerance
+					// checked_in already uses below — only ever applied at
+					// creation, matching how the WC live-fulfilment path also
+					// only ever sets this once, at issue() time.
+					$is_complimentary_raw = $record['is_complimentary'] ?? '';
+					$is_complimentary     = is_bool( $is_complimentary_raw )
+						? $is_complimentary_raw
+						: in_array( strtolower( trim( (string) $is_complimentary_raw ) ), array( 'yes', 'true', '1', 'complimentary', 'comp', 'guestlist' ), true );
 
 					$person_resolver = new Person_Resolver( new Person_Repository(), new Person_Identity_Repository(), new Person_Timeline_Service() );
 
@@ -1505,7 +1557,7 @@ final class Events_Module extends Abstract_Module {
 							'event_id'         => (int) $event_identity['event_id'],
 							'ticket_type_id'   => (int) $ticket_type_identity['ticket_type_id'],
 							'wc_customer_id'   => 0,
-							'is_complimentary' => false,
+							'is_complimentary' => $is_complimentary,
 						)
 					);
 
@@ -1544,49 +1596,7 @@ final class Events_Module extends Abstract_Module {
 						$tickets->set_status( (int) $ticket['id'], $status );
 					}
 
-					$warning = null;
-
-					// Attendance reconciliation. The check-in timestamp is
-					// "first write wins" — once a ticket is checked in
-					// (whether by this import or a live scanner event) it is
-					// never re-mutated by a later import, so a stale re-run
-					// can never silently erase or rewrite a real scan. A
-					// parsed timestamp on its own is treated as authoritative
-					// evidence of attendance even when the boolean column is
-					// blank or absent.
-					$checked_in_raw    = $record['checked_in'] ?? '';
-					$checked_in_at_raw = trim( (string) ( $record['checked_in_at'] ?? '' ) );
-					$checked_in_at     = null;
-
-					if ( '' !== $checked_in_at_raw ) {
-						if ( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $checked_in_at_raw ) ) {
-							$checked_in_at = $checked_in_at_raw;
-						} else {
-							$warning = __( 'Check-in timestamp could not be understood and was ignored.', 'eventos' );
-						}
-					}
-
-					$source_checked_in = null;
-
-					if ( is_bool( $checked_in_raw ) ) {
-						$source_checked_in = $checked_in_raw;
-					} elseif ( '' !== trim( (string) $checked_in_raw ) ) {
-						$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Attendance value was not recognised and was ignored.', 'eventos' );
-					}
-
-					if ( null === $source_checked_in && null !== $checked_in_at ) {
-						$source_checked_in = true;
-					}
-
-					if ( null !== $source_checked_in ) {
-						if ( (bool) $ticket['checked_in'] ) {
-							if ( false === $source_checked_in ) {
-								$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Source reports this ticket as not checked in, but it was already checked in — the existing check-in was kept.', 'eventos' );
-							}
-						} elseif ( true === $source_checked_in ) {
-							$tickets->set_checked_in( (int) $ticket['id'], true, $checked_in_at, 0 );
-						}
-					}
+					$warning = self::reconcile_attendance( $ticket, $record, $tickets );
 
 					// Financial reconciliation. Unlike attendance, these
 					// fields have no competing live writer, so they are set
@@ -1798,5 +1808,106 @@ final class Events_Module extends Abstract_Module {
 				},
 			)
 		);
+	}
+
+	/**
+	 * The 'tickets' import target writer's attendance-reconciliation step —
+	 * shared between the normal (source-identity) path and
+	 * {@see self::reconcile_wc_order_ticket()}'s WC-order-matched path, so
+	 * the exact same Case A-I rules (first-write-wins on check-in, a source
+	 * timestamp alone counts as evidence of attendance, an unrecognised
+	 * value/timestamp warns rather than guesses) apply no matter which way
+	 * the target ticket was found.
+	 *
+	 * @param array<string, mixed> $ticket  The resolved ticket row (before this call).
+	 * @param array<string, mixed> $record  Mapped import row.
+	 * @param Ticket_Repository    $tickets Ticket repository.
+	 * @return string|null Non-fatal warning, or null.
+	 */
+	private static function reconcile_attendance( array $ticket, array $record, Ticket_Repository $tickets ): ?string {
+		$warning = null;
+
+		// The check-in timestamp is "first write wins" — once a ticket is
+		// checked in (whether by this import or a live scanner event) it is
+		// never re-mutated by a later import, so a stale re-run can never
+		// silently erase or rewrite a real scan. A parsed timestamp on its
+		// own is treated as authoritative evidence of attendance even when
+		// the boolean column is blank or absent.
+		$checked_in_raw    = $record['checked_in'] ?? '';
+		$checked_in_at_raw = trim( (string) ( $record['checked_in_at'] ?? '' ) );
+		$checked_in_at     = null;
+
+		if ( '' !== $checked_in_at_raw ) {
+			if ( 1 === preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $checked_in_at_raw ) ) {
+				$checked_in_at = $checked_in_at_raw;
+			} else {
+				$warning = __( 'Check-in timestamp could not be understood and was ignored.', 'eventos' );
+			}
+		}
+
+		$source_checked_in = null;
+
+		if ( is_bool( $checked_in_raw ) ) {
+			$source_checked_in = $checked_in_raw;
+		} elseif ( '' !== trim( (string) $checked_in_raw ) ) {
+			$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Attendance value was not recognised and was ignored.', 'eventos' );
+		}
+
+		if ( null === $source_checked_in && null !== $checked_in_at ) {
+			$source_checked_in = true;
+		}
+
+		if ( null !== $source_checked_in ) {
+			if ( (bool) $ticket['checked_in'] ) {
+				if ( false === $source_checked_in ) {
+					$warning = ( null !== $warning ? $warning . ' ' : '' ) . __( 'Source reports this ticket as not checked in, but it was already checked in — the existing check-in was kept.', 'eventos' );
+				}
+			} elseif ( true === $source_checked_in ) {
+				$tickets->set_checked_in( (int) $ticket['id'], true, $checked_in_at, 0 );
+			}
+		}
+
+		return $warning;
+	}
+
+	/**
+	 * The 'tickets' import target's alternative row shape: reconcile
+	 * attendance onto a ticket that already exists because a real
+	 * WooCommerce order already fulfilled it (live checkout, or the
+	 * WooCommerce ticket-fulfilment backfill) — never creates anything,
+	 * never touches identity/Person/Guest/financials, since all of that is
+	 * already correct from the real order. Only ever reached when a row
+	 * maps a `wc_order_id` — see the 'tickets' target registration above.
+	 *
+	 * @param array<string, mixed> $record      Mapped import row.
+	 * @param int                  $wc_order_id WooCommerce order ID.
+	 * @return int|array<string, mixed>|WP_Error
+	 */
+	private static function reconcile_wc_order_ticket( array $record, int $wc_order_id ) {
+		$occurrence = max( 1, (int) ( $record['wc_order_occurrence'] ?? 1 ) );
+		$tickets    = new Ticket_Repository();
+		$order_tickets = $tickets->for_order( $wc_order_id );
+		$ticket     = $order_tickets[ $occurrence - 1 ] ?? null;
+
+		if ( null === $ticket ) {
+			return new WP_Error(
+				'eventos_import_wc_ticket_not_found',
+				sprintf(
+					/* translators: 1: WooCommerce order ID, 2: position within the order. */
+					__( 'No EventOS ticket found for WooCommerce order #%1$d at position %2$d — run the WooCommerce ticket fulfilment sync first.', 'eventos' ),
+					$wc_order_id,
+					$occurrence
+				)
+			);
+		}
+
+		$warning = self::reconcile_attendance( $ticket, $record, $tickets );
+
+		return null !== $warning
+			? array(
+				'id'      => (int) $ticket['id'],
+				'warning' => $warning,
+			)
+			: (int) $ticket['id'];
 	}
 }
